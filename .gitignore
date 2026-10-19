@@ -1,0 +1,14 @@
+# Meson build directories
+/build/
+/_build/
+
+# Debian packaging output
+/debian/.debhelper/
+/debian/palang/
+/debian/files
+/debian/*.substvars
+/debian/*.log
+
+# Editor files
+*~
+*.swp
