@@ -1,0 +1,9 @@
+# LeakSanitizer suppressions: leaks in system libraries we can't fix.
+#
+# Keep this list short and specific. Every entry hides real reports, so only
+# add a library after checking that the leaked memory is allocated inside it
+# (the first frames of the report), not in Palang's code.
+
+# fontconfig caches font configuration and match results for the lifetime of
+# the process and never frees them at exit.
+leak:libfontconfig.so
