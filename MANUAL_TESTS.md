@@ -106,7 +106,7 @@ unless a test says otherwise.
 
 - Test 2: sahi's desktop is MATE, which reports no dark-mode preference to
   apps, so libadwaita never switches. Moved to Phase 1: a System/Light/Dark
-  setting with a GTK-theme-name fallback (see PLAN.md, Phase 1).
+  setting with a GTK-theme-name fallback (see docs/plan/phase-0-1.md, Phase 1).
 - Phase 1, test 3 (Follow System on MATE): failed, Palang stayed light with
   Mint-Y-Dark. Decided: low priority; the default style is now Dark, and
   the issue is recorded in PROGRESS.md (Phase 1, manual test results).

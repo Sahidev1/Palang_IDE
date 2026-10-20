@@ -1,8 +1,19 @@
 # Continuing Palang IDE — handoff for a new session
 
-Read this first, then `PLAN.md` (roadmap and design decisions),
-`PROGRESS.md` (what's done), and `docs/01-how-phase-1-works.md` (code map).
-Written 2026-10-20 at the end of Phase 1.
+Read this first, then, in order:
+1. `ARCHITECTURE.md`: modules, dependency rules, invariants, conventions.
+2. `docs/interfaces.md`: what each existing module offers (points to the
+   headers).
+3. `PLAN.md` (short roadmap) and **only the current phase's** design in
+   `docs/plan/`.
+4. The newest entry of `PROGRESS.md`.
+
+Open implementation files (and the `docs/NN-*.md` guides) only for the
+modules you're changing. Everything read stays in context for the whole
+session, so read what the task needs (line ranges, not whole files, when
+that's enough).
+
+Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 
 ## The user
 
@@ -10,7 +21,7 @@ Written 2026-10-20 at the end of Phase 1.
 - Knows **C**, not Rust. **Claude writes nearly all the code; sahi reviews
   it and must be able to understand every line.** Readable plain C over
   clever C, and comments that explain *why* and introduce GTK/GLib patterns
-  the first time they appear (see PLAN.md §2b).
+  the first time they appear (see ARCHITECTURE.md §4).
 - Likes to discuss before coding. When they say "just discuss", don't edit
   code. They review commits and manual test results themselves.
 
@@ -23,7 +34,9 @@ Written 2026-10-20 at the end of Phase 1.
   built, verification, bugs found, changes to the plan, open items, where
   to start reading, next), add a phase section to `MANUAL_TESTS.md` for
   things only a person can check, write a `docs/NN-*.md` "how it works"
-  guide, and commit them together.
+  guide, **update `docs/interfaces.md`**, and commit them together.
+- **One Claude session per phase** (Phase 2 is split: 2a, 2b). See the
+  "Sessions" column in PLAN.md's roadmap.
 - **`MANUAL_TESTS.md`**: sahi ticks the boxes and writes results under
   each item, then commits. Read their notes and investigate failures; the
   cause isn't always the code (Phase 0: a "failure" was how a terminal was
@@ -96,25 +109,22 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 |---|---|
 | 0 Setup | ✅ |
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
-| 2 Terminal, project search, command palette, LSP | next |
-| 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (PLAN.md §5–7) |
+| 2a Terminal, project search, command palette | next (`docs/plan/phase-2.md`) |
+| 2b LSP client | after 2a |
+| 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
 Open items: **no license chosen** (`debian/copyright` says TBD), the icon
 (`data/icons/…svg`) is a placeholder, Follow System doesn't switch on MATE
-(low priority, cause unknown), and the open decisions in PLAN.md §8
+(low priority, cause unknown), and the open decisions in PLAN.md §5
 (shortcut prefix `_` vs `\`, math rendering engine, default AI provider,
 phase order, math index base).
 
-## Code layout (details in docs/01)
+## Code layout
 
-```
-src/app/        application, window, save flow, session, preferences dialog
-src/editor/     PalangDocument (all file I/O), PalangEditor (a tab), search bar
-src/workspace/  PalangFileTree + PalangDirectoryModel (our own live listing)
-src/settings/   PalangSettings (config.ini, table-driven), palang-appearance
-data/ui/        GtkBuilder templates, one per widget; data/palang.gresource.xml
-tests/          g_test programs; UI ones listed in tests/meson.build `ui_tests`
-```
+Modules under `src/` (one folder each) are described in `ARCHITECTURE.md`
+§2 and `docs/interfaces.md`. Also: `data/ui/` holds one GtkBuilder
+template per widget (listed in `data/palang.gresource.xml`); `tests/` holds
+the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
 
 ## Gotchas learned the hard way (don't rediscover these)
 
@@ -144,7 +154,8 @@ tests/          g_test programs; UI ones listed in tests/meson.build `ui_tests`
 10. **AI/subscription terms:** for autocomplete use API keys (user's own)
     or local models; don't build on claude.ai subscription login in a
     third-party product. Claude Code (the user's own `claude` CLI) is fine
-    for agentic features and math translation (PLAN.md §5.4, §6.6, §7).
+    for agentic features and math translation (`docs/plan/`:
+    phase-3-autocomplete §4, phase-4-5-math §6, phase-6-agentic).
 
 ## Memory
 
@@ -155,7 +166,7 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Plan Phase 2 with sahi before coding: integrated
-terminal (VTE), project-wide search, command palette, LSP client
-(jsonrpc-glib; GNOME Builder's LSP code is the reference). Language-server
-types also feed the math type system later (PLAN.md §6.7).
+Plan Phase 2a with sahi before coding (`docs/plan/phase-2.md`): the
+bottom panel and other groundwork in `app/`, then the terminal (VTE),
+project-wide search and the command palette. Phase 2b (LSP) is a separate
+session; it needs `clangd` installed first.

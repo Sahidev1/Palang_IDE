@@ -6,7 +6,7 @@
  *   - loading and saving, keeping the file's encoding and line endings,
  *   - picking the syntax-highlighting language from the file name/content.
  *
- * All file I/O in Palang goes through this type (see PLAN.md §3).
+ * All file I/O in Palang goes through this type (see ARCHITECTURE.md §3).
  *
  * It also watches its file. When another program changes or deletes it,
  * the document emits "changed-on-disk" (gboolean deleted). Our own saves

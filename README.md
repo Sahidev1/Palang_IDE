@@ -2,6 +2,7 @@
 
 A lightweight, native IDE for Linux (Debian family), written in C with GTK4,
 libadwaita and GtkSourceView 5. See [PLAN.md](PLAN.md) for the roadmap,
+[ARCHITECTURE.md](ARCHITECTURE.md) for how the code is organised,
 [PROGRESS.md](PROGRESS.md) for what's done, and [docs/](docs/) for how the
 code works.
 
