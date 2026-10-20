@@ -5,7 +5,7 @@
  *
  * Sections of this file:
  *   - Tabs: adding, finding, and keeping the window title in sync
- *   - Opening files
+ *   - Opening files and folders
  *   - Saving (Save, Save As, Save All)
  *   - Closing a tab with unsaved changes
  *   - Closing the window with unsaved changes
@@ -14,6 +14,7 @@
 
 #include "config.h"
 
+#include "palang-file-tree.h"
 #include "palang-save-flow.h"
 #include "palang-window.h"
 
@@ -22,6 +23,9 @@ struct _PalangWindow
   AdwApplicationWindow parent_instance;
 
   /* Template children */
+  AdwOverlaySplitView *split_view;
+  AdwWindowTitle  *sidebar_title;
+  PalangFileTree  *file_tree;
   AdwWindowTitle  *window_title;
   AdwTabBar       *tab_bar;
   AdwToastOverlay *toast_overlay;
@@ -321,6 +325,53 @@ on_open_dialog_done (GObject      *source,
       g_autoptr (GFile) file = g_list_model_get_item (files, i);
       palang_window_open_file (self, file);
     }
+}
+
+void
+palang_window_open_folder (PalangWindow *self,
+                           GFile        *folder)
+{
+  g_autofree char *name = NULL;
+
+  g_return_if_fail (PALANG_IS_WINDOW (self));
+  g_return_if_fail (G_IS_FILE (folder));
+
+  palang_file_tree_set_root (self->file_tree, folder);
+
+  name = g_file_get_basename (folder);
+  adw_window_title_set_title (self->sidebar_title, name);
+  adw_overlay_split_view_set_show_sidebar (self->split_view, TRUE);
+}
+
+GFile *
+palang_window_get_folder (PalangWindow *self)
+{
+  g_return_val_if_fail (PALANG_IS_WINDOW (self), NULL);
+
+  return palang_file_tree_get_root (self->file_tree);
+}
+
+static void
+on_open_folder_dialog_done (GObject      *source,
+                            GAsyncResult *result,
+                            gpointer      user_data)
+{
+  g_autoptr (PalangWindow) self = user_data;
+  g_autoptr (GFile) folder = NULL;
+
+  /* NULL when the user cancelled the dialog. */
+  folder = gtk_file_dialog_select_folder_finish (GTK_FILE_DIALOG (source), result, NULL);
+  if (folder != NULL && self->file_tree != NULL)
+    palang_window_open_folder (self, folder);
+}
+
+/* A file was clicked in the folder tree (connected in the .ui file). */
+static void
+on_file_activated (PalangFileTree *file_tree,
+                   GFile          *file,
+                   PalangWindow   *self)
+{
+  palang_window_open_file (self, file);
 }
 
 /* ---- Saving ------------------------------------------------------------- */
@@ -678,20 +729,48 @@ open_action (GtkWidget  *widget,
 
   gtk_file_dialog_set_title (dialog, "Open Files");
 
-  /* Start in the folder of the current file, if it has one. */
-  if (active != NULL)
+  /* Start in the folder of the current file, or else the open folder. */
+  if (active != NULL && palang_document_get_file (palang_editor_get_document (active)) != NULL)
     {
       GFile *file = palang_document_get_file (palang_editor_get_document (active));
+      g_autoptr (GFile) folder = g_file_get_parent (file);
 
-      if (file != NULL)
-        {
-          g_autoptr (GFile) folder = g_file_get_parent (file);
-          gtk_file_dialog_set_initial_folder (dialog, folder);
-        }
+      gtk_file_dialog_set_initial_folder (dialog, folder);
+    }
+  else if (palang_window_get_folder (self) != NULL)
+    {
+      gtk_file_dialog_set_initial_folder (dialog, palang_window_get_folder (self));
     }
 
   gtk_file_dialog_open_multiple (dialog, GTK_WINDOW (self), NULL,
                                  on_open_dialog_done, g_object_ref (self));
+}
+
+static void
+open_folder_action (GtkWidget  *widget,
+                    const char *action_name,
+                    GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  g_autoptr (GtkFileDialog) dialog = gtk_file_dialog_new ();
+
+  gtk_file_dialog_set_title (dialog, "Open Folder");
+  if (palang_window_get_folder (self) != NULL)
+    gtk_file_dialog_set_initial_folder (dialog, palang_window_get_folder (self));
+
+  gtk_file_dialog_select_folder (dialog, GTK_WINDOW (self), NULL,
+                                 on_open_folder_dialog_done, g_object_ref (self));
+}
+
+static void
+toggle_sidebar_action (GtkWidget  *widget,
+                       const char *action_name,
+                       GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+
+  adw_overlay_split_view_set_show_sidebar (self->split_view,
+                                           !adw_overlay_split_view_get_show_sidebar (self->split_view));
 }
 
 static void
@@ -761,17 +840,26 @@ palang_window_class_init (PalangWindowClass *klass)
   object_class->dispose = palang_window_dispose;
   window_class->close_request = palang_window_close_request;
 
+  /* The .ui file uses <object class="PalangFileTree">. */
+  g_type_ensure (PALANG_TYPE_FILE_TREE);
+
   gtk_widget_class_set_template_from_resource (widget_class,
                                                RESOURCE_PATH "/ui/palang-window.ui");
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, split_view);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, sidebar_title);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, file_tree);
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, window_title);
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, tab_bar);
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, toast_overlay);
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, stack);
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, tab_view);
+  gtk_widget_class_bind_template_callback (widget_class, on_file_activated);
 
   /* Keyboard shortcuts for these are set in palang-application.c. */
   gtk_widget_class_install_action (widget_class, "win.new", NULL, new_action);
   gtk_widget_class_install_action (widget_class, "win.open", NULL, open_action);
+  gtk_widget_class_install_action (widget_class, "win.open-folder", NULL, open_folder_action);
+  gtk_widget_class_install_action (widget_class, "win.toggle-sidebar", NULL, toggle_sidebar_action);
   gtk_widget_class_install_action (widget_class, "win.save", NULL, save_action);
   gtk_widget_class_install_action (widget_class, "win.save-as", NULL, save_as_action);
   gtk_widget_class_install_action (widget_class, "win.save-all", NULL, save_all_action);

@@ -21,6 +21,13 @@ PalangWindow *palang_window_new               (PalangApplication *application);
 void          palang_window_open_file         (PalangWindow *self,
                                                GFile        *file);
 
+/* Shows @folder in the sidebar's folder tree. */
+void          palang_window_open_folder       (PalangWindow *self,
+                                               GFile        *folder);
+
+/* Returns: (transfer none) (nullable): the folder shown in the sidebar. */
+GFile        *palang_window_get_folder        (PalangWindow *self);
+
 /* Opens a new, empty "Untitled" document in a new tab. */
 void          palang_window_new_document      (PalangWindow *self);
 

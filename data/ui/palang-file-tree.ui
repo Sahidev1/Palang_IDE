@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The folder tree. Behaviour lives in src/workspace/palang-file-tree.c. -->
+<interface>
+  <template class="PalangFileTree" parent="AdwBin">
+    <property name="child">
+      <!-- "empty" when no folder is open, "tree" otherwise. -->
+      <object class="GtkStack" id="stack">
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">empty</property>
+            <property name="child">
+              <object class="AdwStatusPage">
+                <property name="icon-name">folder-open-symbolic</property>
+                <property name="title">No Folder Open</property>
+                <property name="child">
+                  <object class="GtkButton">
+                    <property name="label">_Open Folder…</property>
+                    <property name="use-underline">true</property>
+                    <property name="action-name">win.open-folder</property>
+                    <property name="halign">center</property>
+                    <style>
+                      <class name="pill"/>
+                    </style>
+                  </object>
+                </property>
+                <style>
+                  <class name="compact"/>
+                </style>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">tree</property>
+            <property name="child">
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar-policy">never</property>
+                <property name="child">
+                  <object class="GtkListView" id="list_view">
+                    <!-- One click opens a file, like most IDEs. -->
+                    <property name="single-click-activate">true</property>
+                    <signal name="activate" handler="on_activate"/>
+                    <property name="factory">
+                      <object class="GtkSignalListItemFactory">
+                        <signal name="setup" handler="on_setup_row"/>
+                        <signal name="bind" handler="on_bind_row"/>
+                      </object>
+                    </property>
+                    <style>
+                      <class name="navigation-sidebar"/>
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

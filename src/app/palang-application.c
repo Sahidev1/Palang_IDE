@@ -4,7 +4,8 @@
  *   startup  — runs once when the app starts: initialize libraries, actions.
  *   activate — runs when the app is launched (also when the user launches it
  *              again while it is already running): show a window.
- *   open     — like activate, but with files to open ("palang main.c").
+ *   open     — like activate, but with files or a folder to open
+ *              ("palang main.c", "palang ~/projects/foo").
  *   shutdown — runs once before exit.
  */
 
@@ -56,6 +57,8 @@ static const struct {
   { "app.quit",      { "<Control>q", NULL } },
   { "win.new",       { "<Control>n", NULL } },
   { "win.open",      { "<Control>o", NULL } },
+  { "win.open-folder", { "<Control><Shift>o", NULL } },
+  { "win.toggle-sidebar", { "F9", NULL } },
   { "win.save",      { "<Control>s", NULL } },
   { "win.save-as",   { "<Control><Shift>s", NULL } },
   { "win.save-all",  { "<Control><Alt>s", NULL } },
@@ -110,7 +113,14 @@ palang_application_open (GApplication  *app,
   PalangWindow *window = get_or_create_window (app);
 
   for (int i = 0; i < n_files; i++)
-    palang_window_open_file (window, files[i]);
+    {
+      /* A folder becomes the sidebar's folder; anything else opens in a
+       * tab. (A quick, local check, so doing it synchronously is fine.) */
+      if (g_file_query_file_type (files[i], G_FILE_QUERY_INFO_NONE, NULL) == G_FILE_TYPE_DIRECTORY)
+        palang_window_open_folder (window, files[i]);
+      else
+        palang_window_open_file (window, files[i]);
+    }
 
   gtk_window_present (GTK_WINDOW (window));
 }

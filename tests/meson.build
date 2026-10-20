@@ -18,16 +18,24 @@ test('document', test_document, env: sanitizer_env)
 # they also work without a desktop session; otherwise use the current one.
 xvfb_run = find_program('xvfb-run', required: false)
 
-test_window = executable('test-window',
-  'test-window.c',
-  palang_resources,
-  link_with: libpalang,
-  dependencies: palang_deps,
-  include_directories: [config_inc, palang_inc],
-)
+# Tests that create widgets, so they need a display.
+ui_tests = {
+  'window': 'test-window.c',
+  'file-tree': 'test-file-tree.c',
+}
 
-if xvfb_run.found()
-  test('window', xvfb_run, args: ['-a', test_window], env: sanitizer_env)
-else
-  test('window', test_window, env: sanitizer_env)
-endif
+foreach name, source : ui_tests
+  test_exe = executable('test-' + name,
+    source,
+    palang_resources,
+    link_with: libpalang,
+    dependencies: palang_deps,
+    include_directories: [config_inc, palang_inc],
+  )
+
+  if xvfb_run.found()
+    test(name, xvfb_run, args: ['-a', test_exe], env: sanitizer_env)
+  else
+    test(name, test_exe, env: sanitizer_env)
+  endif
+endforeach
