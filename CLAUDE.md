@@ -95,12 +95,13 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | Phase | State |
 |---|---|
 | 0 Setup | ✅ |
-| 1 Usable editor | ✅ code done and committed; **Phase 1 manual tests not yet done by sahi** |
+| 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
 | 2 Terminal, project search, command palette, LSP | next |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (PLAN.md §5–7) |
 
 Open items: **no license chosen** (`debian/copyright` says TBD), the icon
-(`data/icons/…svg`) is a placeholder, and the open decisions in PLAN.md §8
+(`data/icons/…svg`) is a placeholder, Follow System doesn't switch on MATE
+(low priority, cause unknown), and the open decisions in PLAN.md §8
 (shortcut prefix `_` vs `\`, math rendering engine, default AI provider,
 phase order, math index base).
 
@@ -154,8 +155,7 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Ask sahi whether they've done the Phase 1 manual tests (read
-`MANUAL_TESTS.md`), then plan Phase 2 with them before coding: integrated
+Plan Phase 2 with sahi before coding: integrated
 terminal (VTE), project-wide search, command palette, LSP client
 (jsonrpc-glib; GNOME Builder's LSP code is the reference). Language-server
 types also feed the math type system later (PLAN.md §6.7).

@@ -60,6 +60,9 @@
               <object class="GtkSourceView" id="view">
                 <property name="monospace">true</property>
                 <property name="auto-indent">true</property>
+                <!-- Backspace in leading spaces deletes back to the previous
+                     indent level, undoing a Tab in one keystroke. -->
+                <property name="smart-backspace">true</property>
                 <property name="top-margin">6</property>
                 <property name="bottom-margin">6</property>
                 <property name="left-margin">6</property>

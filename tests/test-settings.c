@@ -73,7 +73,7 @@ test_defaults (Fixture *fixture, gconstpointer data)
                 "wrap-lines", &wrap,
                 NULL);
 
-  g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "system");
+  g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "dark");
   g_assert_cmpstr (palang_settings_get_font (settings), ==, "");
   g_assert_cmpuint (palang_settings_get_tab_width (settings), ==, 4);
   g_assert_true (insert_spaces);
@@ -91,7 +91,7 @@ test_save_and_reload (Fixture *fixture, gconstpointer data)
   gboolean wrap;
 
   g_object_set (first,
-                "color-scheme", "dark",
+                "color-scheme", "light",
                 "font", "JetBrains Mono 12",
                 "tab-width", 2,
                 "wrap-lines", TRUE,
@@ -100,7 +100,7 @@ test_save_and_reload (Fixture *fixture, gconstpointer data)
   second = palang_settings_new_for_path (fixture->path);
   g_object_get (second, "wrap-lines", &wrap, NULL);
 
-  g_assert_cmpstr (palang_settings_get_color_scheme (second), ==, "dark");
+  g_assert_cmpstr (palang_settings_get_color_scheme (second), ==, "light");
   g_assert_cmpstr (palang_settings_get_font (second), ==, "JetBrains Mono 12");
   g_assert_cmpuint (palang_settings_get_tab_width (second), ==, 2);
   g_assert_true (wrap);
@@ -152,7 +152,7 @@ test_invalid_values_use_defaults (Fixture *fixture, gconstpointer data)
   settings = palang_settings_new_for_path (fixture->path);
   g_object_get (settings, "insert-spaces", &insert_spaces, NULL);
 
-  g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "system");
+  g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "dark");
   g_assert_cmpuint (palang_settings_get_tab_width (settings), ==, 4);
   g_assert_true (insert_spaces);
 }
@@ -167,7 +167,7 @@ test_rejects_invalid_color_scheme (Fixture *fixture, gconstpointer data)
   g_object_set (settings, "color-scheme", "purple", NULL);
   g_test_assert_expected_messages ();
 
-  g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "system");
+  g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "dark");
 }
 
 /* "notify" fires only when a value really changes. */

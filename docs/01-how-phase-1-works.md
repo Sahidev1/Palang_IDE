@@ -122,6 +122,10 @@ report one. So `palang_appearance_choose_color_scheme()` also looks at the
 GTK theme name: "Mint-Y-Dark" → dark. It's a pure function, unit-tested
 without a display.
 
+In sahi's manual test this still didn't switch on MATE (cause unknown), so
+the **default is Dark**; Follow System is a choice in Preferences. See
+PROGRESS.md, Phase 1 manual test results.
+
 The editor font is one display-wide CSS provider for the `palang-editor`
 class (`palang_appearance_font_to_css()`).
 

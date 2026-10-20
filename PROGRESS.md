@@ -56,11 +56,29 @@ restore. It installs as a 36 KB `.deb`.
   (`build/test-home/`). Dialogs are tested by clicking their buttons.
 - **Default indentation is 4 spaces** (Preferences can change it).
 
+### Manual test results (sahi, 2026-10-20)
+All Phase 1 manual tests passed except one (details in `MANUAL_TESTS.md`):
+
+- **Failed: "Follow System" doesn't follow MATE.** Switching MATE to
+  Mint-Y-Dark (or a similar dark theme) left Palang light. Checked
+  afterwards: GTK4 does receive MATE's theme name live (it reported
+  `Windows XP Luna`, the same as `org.mate.interface gtk-theme`), and the
+  name check in `palang_appearance_choose_color_scheme()` is unit-tested,
+  so the cause is still unknown. Even when found, guessing from the name
+  misses dark themes without "dark" in it (`Redmond97 Matrix`, …).
+  **Decision:** low priority for now; the **default style is Dark**
+  instead of Follow System (`palang-settings.c`). Follow System is still
+  in Preferences. Possible future fix: find the cause, then decide dark
+  from the theme's actual background colour instead of its name.
+- **Fixed: Backspace after Tab** removed one space instead of the whole
+  indent. GtkSourceView's `smart-backspace` is now on
+  (`data/ui/palang-editor.ui`); checked in the real app.
+
 ### Open items
 - **License:** none chosen yet; `debian/copyright` says "TBD (all rights
   reserved)". Needed before sharing the package.
 - **Icon** is a placeholder.
-- Phase 1 manual tests.
+- **Follow System on MATE** doesn't work (see above).
 
 ### Where to start reading
 1. `docs/01-how-phase-1-works.md`: map of the code and the reasons behind

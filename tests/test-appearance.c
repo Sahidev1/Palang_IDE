@@ -37,6 +37,8 @@ test_follows_settings_and_theme_name (void)
       return;
     }
 
+  /* The default is "dark"; this test is about "system". */
+  g_object_set (settings, "color-scheme", "system", NULL);
   set_gtk_theme ("Adwaita");
   palang_appearance_follow (settings);
   g_assert_false (is_dark ());

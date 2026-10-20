@@ -37,7 +37,9 @@ static const char *const color_scheme_choices[] = { "system", "light", "dark", N
 
 /* Order must match the PROP_ enum below. */
 static const Option options[] = {
-  { "color-scheme", "appearance", OPTION_STRING, .default_string = "system",
+  /* Dark, not "system": following the system doesn't work reliably on MATE
+   * yet (see PROGRESS.md, Phase 1 manual test results). */
+  { "color-scheme", "appearance", OPTION_STRING, .default_string = "dark",
     .choices = color_scheme_choices },
   { "font", "editor", OPTION_STRING, .default_string = "" },
   { "tab-width", "editor", OPTION_UINT, .default_uint = 4, .min_uint = 1, .max_uint = 16 },
