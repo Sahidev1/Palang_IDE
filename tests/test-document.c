@@ -303,6 +303,104 @@ test_save_detects_external_change (Fixture *fixture, gconstpointer data)
   g_assert_cmpstr (on_disk, ==, "ours, edited\n");
 }
 
+/* ---- Watching for outside changes --------------------------------------- */
+
+typedef struct {
+  guint    count;
+  gboolean deleted;
+} DiskChanges;
+
+static void
+on_changed_on_disk (PalangDocument *document,
+                    gboolean        deleted,
+                    DiskChanges    *changes)
+{
+  changes->count++;
+  changes->deleted = deleted;
+}
+
+/* Runs the main loop for @ms milliseconds. */
+static void
+run_main_loop_for (guint ms)
+{
+  gint64 until = g_get_monotonic_time () + ms * 1000;
+
+  while (g_get_monotonic_time () < until)
+    g_main_context_iteration (NULL, FALSE);
+}
+
+/* Another program writes the file. The modification time is pushed
+ * forward so the change is visible even within the same second. */
+static void
+write_externally (GFile *file, const char *contents)
+{
+  g_autofree char *path = g_file_get_path (file);
+  g_autoptr (GError) error = NULL;
+
+  g_file_set_contents (path, contents, -1, &error);
+  g_assert_no_error (error);
+  g_file_set_attribute_uint64 (file, G_FILE_ATTRIBUTE_TIME_MODIFIED,
+                               g_get_real_time () / G_USEC_PER_SEC + 10,
+                               G_FILE_QUERY_INFO_NONE, NULL, &error);
+  g_assert_no_error (error);
+}
+
+static void
+test_detects_outside_change (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangDocument) document = palang_document_new ();
+  g_autoptr (GFile) file = write_file (fixture, "watched.txt", "v1\n", -1);
+  DiskChanges changes = { 0 };
+
+  g_assert_true (load (document, file, NULL));
+  g_signal_connect (document, "changed-on-disk", G_CALLBACK (on_changed_on_disk), &changes);
+
+  write_externally (file, "v2\n");
+  run_main_loop_for (1500);
+
+  g_assert_cmpuint (changes.count, >=, 1);
+  g_assert_false (changes.deleted);
+}
+
+/* Our own saves must not look like outside changes. */
+static void
+test_own_save_is_not_an_outside_change (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangDocument) document = palang_document_new ();
+  g_autoptr (GFile) file = write_file (fixture, "mine.txt", "v1\n", -1);
+  DiskChanges changes = { 0 };
+
+  g_assert_true (load (document, file, NULL));
+  g_signal_connect (document, "changed-on-disk", G_CALLBACK (on_changed_on_disk), &changes);
+
+  for (int i = 0; i < 3; i++)
+    {
+      gtk_text_buffer_insert_at_cursor (GTK_TEXT_BUFFER (document), "x", -1);
+      g_assert_true (save (document, NULL, NULL));
+    }
+  run_main_loop_for (1500);
+
+  g_assert_cmpuint (changes.count, ==, 0);
+}
+
+static void
+test_detects_deletion (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangDocument) document = palang_document_new ();
+  g_autoptr (GFile) file = write_file (fixture, "doomed.txt", "bye\n", -1);
+  g_autofree char *path = g_file_get_path (file);
+  DiskChanges changes = { 0 };
+
+  g_assert_true (load (document, file, NULL));
+  g_signal_connect (document, "changed-on-disk", G_CALLBACK (on_changed_on_disk), &changes);
+
+  g_unlink (path);
+  run_main_loop_for (1500);
+
+  g_assert_cmpuint (changes.count, >=, 1);
+  g_assert_true (changes.deleted);
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -327,6 +425,12 @@ main (int   argc,
               fixture_setup, test_save_as, fixture_teardown);
   g_test_add ("/document/save-detects-external-change", Fixture, NULL,
               fixture_setup, test_save_detects_external_change, fixture_teardown);
+  g_test_add ("/document/detects-outside-change", Fixture, NULL,
+              fixture_setup, test_detects_outside_change, fixture_teardown);
+  g_test_add ("/document/own-save-is-not-an-outside-change", Fixture, NULL,
+              fixture_setup, test_own_save_is_not_an_outside_change, fixture_teardown);
+  g_test_add ("/document/detects-deletion", Fixture, NULL,
+              fixture_setup, test_detects_deletion, fixture_teardown);
 
   return g_test_run ();
 }

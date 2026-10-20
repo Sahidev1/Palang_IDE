@@ -1,9 +1,10 @@
 /* palang-editor.c — one document shown in a GtkSourceView.
  *
- * The view's settings (line numbers, indentation…) are in
- * data/ui/palang-editor.ui. This file connects the view to its document and
- * keeps the "title" and "path" properties up to date, which the window binds
- * to the tab's label and tooltip.
+ * The view's layout is in data/ui/palang-editor.ui. This file connects the
+ * view to its document and settings, keeps the "title" and "path"
+ * properties up to date (the window binds them to the tab's label and
+ * tooltip), runs the Find and Go to Line bars, and reacts when another
+ * program changes the file.
  */
 
 #include "config.h"
@@ -20,6 +21,7 @@ struct _PalangEditor
 
   /* Template children */
   GtkSourceView *view;
+  AdwBanner     *disk_banner;
   GtkRevealer   *go_to_revealer;
   GtkEntry      *go_to_entry;
 };
@@ -76,6 +78,144 @@ on_document_modified_changed (GtkTextBuffer *buffer,
                               PalangEditor  *self)
 {
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_TITLE]);
+
+  /* Saved (or reloaded): the disk and the editor agree again. */
+  if (!gtk_text_buffer_get_modified (buffer))
+    adw_banner_set_revealed (self->disk_banner, FALSE);
+}
+
+/* ---- Changes made by other programs ------------------------------------- */
+
+/* Puts the cursor at @line/@offset (0-based), or as close as possible. */
+static void
+place_cursor (PalangEditor *self,
+              int           line,
+              int           offset)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (self->document);
+  GtkTextIter iter, line_end;
+
+  gtk_text_buffer_get_iter_at_line (buffer, &iter, line);
+  line_end = iter;
+  if (!gtk_text_iter_ends_line (&line_end))
+    gtk_text_iter_forward_to_line_end (&line_end);
+  gtk_text_iter_set_line_offset (&iter, MIN (offset, gtk_text_iter_get_line_offset (&line_end)));
+
+  gtk_text_buffer_place_cursor (buffer, &iter);
+  gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (self->view),
+                                gtk_text_buffer_get_insert (buffer),
+                                0, TRUE, 0, 0.3);
+}
+
+/* Where the cursor was before a reload. */
+typedef struct {
+  PalangEditor *editor;  /* owned */
+  int           line;
+  int           offset;
+} ReloadData;
+
+static void
+on_reloaded (GObject      *source,
+             GAsyncResult *result,
+             gpointer      user_data)
+{
+  ReloadData *data = user_data;
+  PalangEditor *self = data->editor;
+  g_autoptr (GError) error = NULL;
+
+  if (palang_document_load_finish (PALANG_DOCUMENT (source), result, &error))
+    {
+      place_cursor (self, data->line, data->offset);
+      adw_banner_set_revealed (self->disk_banner, FALSE);
+    }
+  else
+    {
+      g_autofree char *title = g_strdup_printf ("Could not reload: %s", error->message);
+      adw_banner_set_title (self->disk_banner, title);
+      adw_banner_set_button_label (self->disk_banner, "_Try Again");
+      adw_banner_set_revealed (self->disk_banner, TRUE);
+    }
+
+  g_object_unref (data->editor);
+  g_free (data);
+}
+
+void
+palang_editor_reload_from_disk (PalangEditor *self)
+{
+  GtkTextBuffer *buffer;
+  GFile *file;
+  GtkTextIter cursor;
+  ReloadData *data;
+
+  g_return_if_fail (PALANG_IS_EDITOR (self));
+
+  file = palang_document_get_file (self->document);
+  if (file == NULL)
+    return;
+
+  buffer = GTK_TEXT_BUFFER (self->document);
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+
+  data = g_new0 (ReloadData, 1);
+  data->editor = g_object_ref (self);
+  data->line = gtk_text_iter_get_line (&cursor);
+  data->offset = gtk_text_iter_get_line_offset (&cursor);
+
+  palang_document_load_async (self->document, file, NULL, on_reloaded, data);
+}
+
+gboolean
+palang_editor_is_disk_banner_visible (PalangEditor *self)
+{
+  g_return_val_if_fail (PALANG_IS_EDITOR (self), FALSE);
+
+  return adw_banner_get_revealed (self->disk_banner);
+}
+
+/* Another program changed or deleted our file. */
+static void
+on_changed_on_disk (PalangDocument *document,
+                    gboolean        deleted,
+                    PalangEditor   *self)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (document);
+  g_autofree char *name = palang_document_dup_title (document);
+  g_autofree char *title = NULL;
+
+  if (deleted)
+    {
+      /* Mark it modified, so the tab shows "•" and closing asks first:
+       * the text now exists only here. */
+      gtk_text_buffer_set_modified (buffer, TRUE);
+      title = g_strdup_printf ("“%s” was deleted from disk. Save to keep it.", name);
+      adw_banner_set_title (self->disk_banner, title);
+      adw_banner_set_button_label (self->disk_banner, NULL);
+      adw_banner_set_revealed (self->disk_banner, TRUE);
+      return;
+    }
+
+  /* Nothing to lose: just show the new version. */
+  if (!gtk_text_buffer_get_modified (buffer))
+    {
+      palang_editor_reload_from_disk (self);
+      return;
+    }
+
+  title = g_strdup_printf ("“%s” was changed by another program. Reload to see "
+                          "the new version and lose your changes, or save to "
+                          "overwrite it.", name);
+  adw_banner_set_title (self->disk_banner, title);
+  adw_banner_set_button_label (self->disk_banner, "_Reload");
+  adw_banner_set_revealed (self->disk_banner, TRUE);
+}
+
+/* The banner's Reload / Try Again button. */
+static void
+on_disk_banner_reload (AdwBanner    *banner,
+                       PalangEditor *self)
+{
+  palang_editor_reload_from_disk (self);
 }
 
 char *
@@ -332,6 +472,8 @@ palang_editor_constructed (GObject *object)
                            G_CALLBACK (on_document_title_changed), self, 0);
   g_signal_connect_object (self->document, "modified-changed",
                            G_CALLBACK (on_document_modified_changed), self, 0);
+  g_signal_connect_object (self->document, "changed-on-disk",
+                           G_CALLBACK (on_changed_on_disk), self, 0);
 
   update_style_scheme (self);
   g_signal_connect_object (adw_style_manager_get_default (), "notify::dark",
@@ -431,8 +573,10 @@ palang_editor_class_init (PalangEditorClass *klass)
   gtk_widget_class_set_template_from_resource (widget_class,
                                                RESOURCE_PATH "/ui/palang-editor.ui");
   gtk_widget_class_bind_template_child (widget_class, PalangEditor, view);
+  gtk_widget_class_bind_template_child (widget_class, PalangEditor, disk_banner);
   gtk_widget_class_bind_template_child (widget_class, PalangEditor, go_to_revealer);
   gtk_widget_class_bind_template_child (widget_class, PalangEditor, go_to_entry);
+  gtk_widget_class_bind_template_callback (widget_class, on_disk_banner_reload);
   gtk_widget_class_bind_template_callback (widget_class, on_go_to_activate);
   gtk_widget_class_bind_template_callback (widget_class, on_go_to_close_clicked);
 

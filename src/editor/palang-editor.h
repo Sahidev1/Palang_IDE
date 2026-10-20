@@ -46,6 +46,13 @@ void           palang_editor_show_go_to    (PalangEditor *self);
 gboolean       palang_editor_go_to         (PalangEditor *self,
                                             const char   *spec);
 
+/* Reloads the file from disk, discarding unsaved changes; keeps the cursor
+ * on the same line. */
+void           palang_editor_reload_from_disk (PalangEditor *self);
+
+/* TRUE while the "changed on disk" / "deleted" banner is shown. */
+gboolean       palang_editor_is_disk_banner_visible (PalangEditor *self);
+
 /* Returns: (transfer full): tab title, with a "• " prefix when modified. */
 char           *palang_editor_dup_title    (PalangEditor *self);
 

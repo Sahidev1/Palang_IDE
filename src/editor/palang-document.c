@@ -20,6 +20,10 @@
  * (e.g. a "#!/usr/bin/env python3" line in a file with no extension). */
 #define CONTENT_SNIFF_LENGTH 1024
 
+/* How long to wait after a change event before checking the file. Writing
+ * a file produces a burst of events; this turns them into one check. */
+#define DISK_CHECK_DELAY_MS 300
+
 struct _PalangDocument
 {
   GtkSourceBuffer parent_instance;
@@ -27,6 +31,11 @@ struct _PalangDocument
   /* Location + on-disk format. Always non-NULL; its location is NULL for a
    * new, never-saved document. */
   GtkSourceFile *source_file;
+
+  /* Watching the file for changes by other programs. */
+  GFileMonitor *monitor;           /* owned, nullable */
+  guint         disk_check_id;     /* pending check (a GLib timeout), or 0 */
+  gboolean      saving;            /* a save of ours is in progress */
 };
 
 G_DEFINE_FINAL_TYPE (PalangDocument, palang_document, GTK_SOURCE_TYPE_BUFFER)
@@ -38,7 +47,13 @@ enum {
   N_PROPS
 };
 
+enum {
+  SIGNAL_CHANGED_ON_DISK,
+  N_SIGNALS
+};
+
 static GParamSpec *properties[N_PROPS];
+static guint signals[N_SIGNALS];
 
 /* Picks the syntax-highlighting language from the file name and the start
  * of the text, or no highlighting if nothing matches. */
@@ -81,6 +96,90 @@ notify_location_changed (PalangDocument *self)
 {
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_TITLE]);
+}
+
+/* ---- Watching the file for outside changes ------------------------------ */
+
+static void schedule_disk_check (PalangDocument *self);
+
+/* Runs DISK_CHECK_DELAY_MS after the last change event. */
+static gboolean
+check_on_disk (gpointer user_data)
+{
+  PalangDocument *self = user_data;
+  gboolean deleted, modified;
+
+  self->disk_check_id = 0;
+
+  /* During our own save the file is half-written and GtkSourceFile doesn't
+   * know its new modification time yet; check again once we're done. */
+  if (self->saving)
+    {
+      schedule_disk_check (self);
+      return G_SOURCE_REMOVE;
+    }
+
+  /* GtkSourceFile compares the file on disk with the modification time it
+   * recorded when we last loaded or saved it. */
+  gtk_source_file_check_file_on_disk (self->source_file);
+  deleted = gtk_source_file_is_deleted (self->source_file);
+  modified = gtk_source_file_is_externally_modified (self->source_file);
+
+  if (deleted || modified)
+    g_signal_emit (self, signals[SIGNAL_CHANGED_ON_DISK], 0, deleted);
+
+  return G_SOURCE_REMOVE;
+}
+
+static void
+schedule_disk_check (PalangDocument *self)
+{
+  g_clear_handle_id (&self->disk_check_id, g_source_remove);
+  self->disk_check_id = g_timeout_add (DISK_CHECK_DELAY_MS, check_on_disk, self);
+}
+
+static void
+on_file_monitor_changed (GFileMonitor      *monitor,
+                         GFile             *file,
+                         GFile             *other_file,
+                         GFileMonitorEvent  event,
+                         PalangDocument    *self)
+{
+  switch (event)
+    {
+    case G_FILE_MONITOR_EVENT_CHANGED:
+    case G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT:
+    case G_FILE_MONITOR_EVENT_CREATED:
+    case G_FILE_MONITOR_EVENT_DELETED:
+    case G_FILE_MONITOR_EVENT_ATTRIBUTE_CHANGED:
+      schedule_disk_check (self);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/* (Re)starts watching the document's current file, if it has one. */
+static void
+watch_file (PalangDocument *self)
+{
+  GFile *location = gtk_source_file_get_location (self->source_file);
+
+  if (self->monitor != NULL)
+    {
+      g_signal_handlers_disconnect_by_data (self->monitor, self);
+      g_file_monitor_cancel (self->monitor);
+      g_clear_object (&self->monitor);
+    }
+
+  if (location == NULL)
+    return;
+
+  /* Can fail (e.g. on some network filesystems); then we just don't watch. */
+  self->monitor = g_file_monitor_file (location, G_FILE_MONITOR_NONE, NULL, NULL);
+  if (self->monitor != NULL)
+    g_signal_connect (self->monitor, "changed", G_CALLBACK (on_file_monitor_changed), self);
 }
 
 /* ---- Loading ------------------------------------------------------------ */
@@ -189,6 +288,7 @@ on_load_finished (GObject      *source,
    * location and format. */
   take_text_from (self, data->scratch);
   g_set_object (&self->source_file, data->file);
+  watch_file (self);
 
   update_language (self);
 
@@ -250,11 +350,17 @@ on_save_finished (GObject      *source,
   PalangDocument *self = g_task_get_source_object (task);
   g_autoptr (GError) error = NULL;
 
+  self->saving = FALSE;
+
   if (!gtk_source_file_saver_save_finish (saver, result, &error))
     {
       g_task_return_error (task, g_steal_pointer (&error));
       return;
     }
+
+  /* After "Save As" the file is a different one; restarting the watch
+   * every time keeps this simple. */
+  watch_file (self);
 
   /* After "Save As" the file name may have changed (e.g. notes.txt →
    * notes.py), so the language may change too. */
@@ -302,6 +408,7 @@ palang_document_save_async (PalangDocument      *self,
     gtk_source_file_saver_set_flags (saver,
                                      GTK_SOURCE_FILE_SAVER_FLAGS_IGNORE_MODIFICATION_TIME);
 
+  self->saving = TRUE;
   gtk_source_file_saver_save_async (saver, G_PRIORITY_DEFAULT, cancellable,
                                     NULL, NULL, NULL,
                                     on_save_finished, g_steal_pointer (&task));
@@ -380,6 +487,22 @@ palang_document_constructed (GObject *object)
 }
 
 static void
+palang_document_dispose (GObject *object)
+{
+  PalangDocument *self = PALANG_DOCUMENT (object);
+
+  g_clear_handle_id (&self->disk_check_id, g_source_remove);
+  if (self->monitor != NULL)
+    {
+      g_signal_handlers_disconnect_by_data (self->monitor, self);
+      g_file_monitor_cancel (self->monitor);
+      g_clear_object (&self->monitor);
+    }
+
+  G_OBJECT_CLASS (palang_document_parent_class)->dispose (object);
+}
+
+static void
 palang_document_finalize (GObject *object)
 {
   PalangDocument *self = PALANG_DOCUMENT (object);
@@ -395,6 +518,7 @@ palang_document_class_init (PalangDocumentClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
   object_class->constructed = palang_document_constructed;
+  object_class->dispose = palang_document_dispose;
   object_class->get_property = palang_document_get_property;
   object_class->finalize = palang_document_finalize;
 
@@ -410,6 +534,15 @@ palang_document_class_init (PalangDocumentClass *klass)
                          G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, N_PROPS, properties);
+
+  /* "changed-on-disk" (PalangDocument *document, gboolean deleted): another
+   * program changed (or, if @deleted, removed) the file. */
+  signals[SIGNAL_CHANGED_ON_DISK] =
+    g_signal_new ("changed-on-disk",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
+                  G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
 }
 
 static void

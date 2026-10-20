@@ -9,6 +9,7 @@
  *   - Saving (Save, Save As, Save All)
  *   - Closing a tab with unsaved changes
  *   - Closing the window with unsaved changes
+ *   - Session: remembering what was open
  *   - Actions (what menu items and shortcuts call)
  */
 
@@ -622,6 +623,8 @@ on_close_page (AdwTabView   *tab_view,
 
 /* ---- Closing the window with unsaved changes ---------------------------- */
 
+static void save_session (PalangWindow *self);
+
 /* The user has decided (discard or saved everything): close for real.
  *
  * We destroy the window directly instead of calling gtk_window_close()
@@ -631,6 +634,7 @@ on_close_page (AdwTabView   *tab_view,
 static void
 close_without_asking (PalangWindow *self)
 {
+  save_session (self);
   gtk_window_destroy (GTK_WINDOW (self));
 }
 
@@ -679,7 +683,10 @@ palang_window_close_request (GtkWindow *window)
 
   documents = collect_modified_documents (self);
   if (documents->len == 0)
-    return GTK_WINDOW_CLASS (palang_window_parent_class)->close_request (window);
+    {
+      save_session (self);
+      return GTK_WINDOW_CLASS (palang_window_parent_class)->close_request (window);
+    }
 
   if (documents->len == 1)
     {
@@ -708,6 +715,134 @@ palang_window_close_request (GtkWindow *window)
                            on_close_window_response, g_object_ref (self));
 
   return TRUE;
+}
+
+/* ---- Session: remembering what was open --------------------------------- */
+
+PalangSession *
+palang_window_dup_session (PalangWindow *self)
+{
+  PalangSession *session = palang_session_new ();
+  AdwTabPage *selected;
+  guint n_pages;
+
+  g_return_val_if_fail (PALANG_IS_WINDOW (self), session);
+
+  if (palang_window_get_folder (self) != NULL)
+    session->folder = g_object_ref (palang_window_get_folder (self));
+  session->show_sidebar = adw_overlay_split_view_get_show_sidebar (self->split_view);
+
+  selected = adw_tab_view_get_selected_page (self->tab_view);
+  n_pages = adw_tab_view_get_n_pages (self->tab_view);
+
+  for (guint i = 0; i < n_pages; i++)
+    {
+      AdwTabPage *page = adw_tab_view_get_nth_page (self->tab_view, i);
+      GFile *file = palang_document_get_file (palang_editor_get_document (editor_for_page (page)));
+
+      if (file == NULL)
+        continue;
+
+      if (page == selected)
+        session->active = session->files->len;
+      g_ptr_array_add (session->files, g_object_ref (file));
+    }
+
+  return session;
+}
+
+/* Writes the session file; called just before the window closes. */
+static void
+save_session (PalangWindow *self)
+{
+  g_autoptr (PalangSession) session = palang_window_dup_session (self);
+  g_autofree char *path = palang_session_default_path ();
+  g_autoptr (GError) error = NULL;
+
+  if (!palang_session_save (session, path, &error))
+    g_warning ("Could not save the session to %s: %s", path, error->message);
+}
+
+/* Restoring opens the files one after another, so the tabs come back in
+ * their original order (loading them all at once would add each tab
+ * whenever its file happened to finish loading). */
+typedef struct {
+  PalangWindow *window;  /* owned */
+  GPtrArray    *files;   /* owned; GFile */
+  guint         next;    /* index of the file being loaded */
+  int           active;  /* index of the tab to select at the end */
+  AdwTabPage   *active_page;  /* not owned; set once that file is open */
+} RestoreData;
+
+static void
+restore_data_free (RestoreData *data)
+{
+  g_clear_object (&data->window);
+  g_clear_pointer (&data->files, g_ptr_array_unref);
+  g_free (data);
+}
+
+static void restore_next_file (RestoreData *data);
+
+static void
+on_restored_file_loaded (GObject      *source,
+                         GAsyncResult *result,
+                         gpointer      user_data)
+{
+  RestoreData *data = user_data;
+  PalangDocument *document = PALANG_DOCUMENT (source);
+
+  /* A file that can't be opened (deleted since) is skipped quietly. */
+  if (palang_document_load_finish (document, result, NULL) && data->window->tab_view != NULL)
+    {
+      AdwTabPage *page = add_editor (data->window, document);
+
+      if ((int) data->next == data->active)
+        data->active_page = page;
+    }
+
+  g_object_unref (document);
+  data->next++;
+  restore_next_file (data);
+}
+
+static void
+restore_next_file (RestoreData *data)
+{
+  if (data->next >= data->files->len || data->window->tab_view == NULL)
+    {
+      if (data->active_page != NULL && data->window->tab_view != NULL)
+        adw_tab_view_set_selected_page (data->window->tab_view, data->active_page);
+      restore_data_free (data);
+      return;
+    }
+
+  /* The document's reference is released in on_restored_file_loaded. */
+  palang_document_load_async (palang_document_new (),
+                              g_ptr_array_index (data->files, data->next),
+                              NULL, on_restored_file_loaded, data);
+}
+
+void
+palang_window_restore_session (PalangWindow        *self,
+                               const PalangSession *session)
+{
+  RestoreData *data;
+
+  g_return_if_fail (PALANG_IS_WINDOW (self));
+  g_return_if_fail (session != NULL);
+
+  if (session->folder != NULL && g_file_query_exists (session->folder, NULL))
+    palang_window_open_folder (self, session->folder);
+  adw_overlay_split_view_set_show_sidebar (self->split_view,
+                                           session->show_sidebar &&
+                                           palang_window_get_folder (self) != NULL);
+
+  data = g_new0 (RestoreData, 1);
+  data->window = g_object_ref (self);
+  data->files = g_ptr_array_ref (session->files);
+  data->active = session->active;
+  restore_next_file (data);
 }
 
 /* ---- Actions ------------------------------------------------------------ */

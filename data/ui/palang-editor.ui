@@ -8,6 +8,14 @@
       <object class="GtkBox">
         <property name="orientation">vertical</property>
 
+        <!-- Shown when another program changed or deleted the file while
+             it has unsaved changes here. -->
+        <child>
+          <object class="AdwBanner" id="disk_banner">
+            <signal name="button-clicked" handler="on_disk_banner_reload"/>
+          </object>
+        </child>
+
         <!-- "Go to line" bar, shown by Ctrl+G. -->
         <child>
           <object class="GtkRevealer" id="go_to_revealer">

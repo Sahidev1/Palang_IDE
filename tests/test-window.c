@@ -435,6 +435,157 @@ test_close_window_with_changes (Fixture *fixture, gconstpointer data)
   g_assert_cmpstr (b_on_disk, ==, "b\nb2\n");
 }
 
+/* ---- Changes by other programs ----------------------------------------- */
+
+/* Another program writes the file (with a later modification time, so the
+ * change is visible even within the same second). */
+static void
+write_externally (GFile *file, const char *contents)
+{
+  g_autofree char *path = g_file_get_path (file);
+
+  g_file_set_contents (path, contents, -1, NULL);
+  g_file_set_attribute_uint64 (file, G_FILE_ATTRIBUTE_TIME_MODIFIED,
+                               g_get_real_time () / G_USEC_PER_SEC + 10,
+                               G_FILE_QUERY_INFO_NONE, NULL, NULL);
+}
+
+static gboolean
+active_text_is (PalangWindow *window, gpointer expected)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (palang_editor_get_document (palang_window_get_active_editor (window)));
+  GtkTextIter start, end;
+  g_autofree char *text = NULL;
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  text = gtk_text_buffer_get_text (buffer, &start, &end, TRUE);
+  return g_strcmp0 (text, expected) == 0;
+}
+
+static gboolean
+disk_banner_visible (PalangWindow *window, gpointer data)
+{
+  return palang_editor_is_disk_banner_visible (palang_window_get_active_editor (window));
+}
+
+/* No unsaved changes: the new version simply appears. */
+static void
+test_reloads_unmodified_file (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) file = write_file (fixture, "live.txt", "old\n");
+
+  palang_window_open_file (fixture->window, file);
+  wait_until (fixture->window, active_file_is, file);
+
+  write_externally (file, "new\n");
+  wait_until (fixture->window, active_text_is, "new\n");
+  g_assert_false (disk_banner_visible (fixture->window, NULL));
+}
+
+/* Unsaved changes are never thrown away silently: a banner asks first. */
+static void
+test_modified_file_shows_banner (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) file = write_file (fixture, "both.txt", "old\n");
+
+  palang_window_open_file (fixture->window, file);
+  wait_until (fixture->window, active_file_is, file);
+  type_into_active (fixture->window, "mine\n");
+
+  write_externally (file, "theirs\n");
+  wait_until (fixture->window, disk_banner_visible, NULL);
+  g_assert_true (active_text_is (fixture->window, "old\nmine\n"));
+
+  /* The banner's Reload button. */
+  palang_editor_reload_from_disk (palang_window_get_active_editor (fixture->window));
+  wait_until (fixture->window, active_text_is, "theirs\n");
+  g_assert_false (disk_banner_visible (fixture->window, NULL));
+}
+
+static void
+test_deleted_file_shows_banner (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) file = write_file (fixture, "gone.txt", "text\n");
+  g_autofree char *path = g_file_get_path (file);
+  g_autofree char *title = NULL;
+
+  palang_window_open_file (fixture->window, file);
+  wait_until (fixture->window, active_file_is, file);
+
+  g_unlink (path);
+  wait_until (fixture->window, disk_banner_visible, NULL);
+
+  /* Marked modified, so closing would ask first. */
+  title = palang_editor_dup_title (palang_window_get_active_editor (fixture->window));
+  g_assert_cmpstr (title, ==, "• gone.txt");
+}
+
+/* ---- Session ------------------------------------------------------------ */
+
+static void
+test_dup_session (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) folder = g_file_new_for_path (fixture->dir);
+  g_autoptr (GFile) a = write_file (fixture, "a.c", "");
+  g_autoptr (GFile) b = write_file (fixture, "b.c", "");
+  g_autoptr (PalangSession) session = NULL;
+
+  palang_window_open_folder (fixture->window, folder);
+  palang_window_open_file (fixture->window, a);
+  wait_until (fixture->window, active_file_is, a);
+  palang_window_new_document (fixture->window);  /* Untitled: not saved */
+  palang_window_open_file (fixture->window, b);
+  wait_until (fixture->window, active_file_is, b);
+
+  session = palang_window_dup_session (fixture->window);
+
+  g_assert_true (g_file_equal (session->folder, folder));
+  g_assert_cmpuint (session->files->len, ==, 2);
+  g_assert_true (g_file_equal (g_ptr_array_index (session->files, 0), a));
+  g_assert_true (g_file_equal (g_ptr_array_index (session->files, 1), b));
+  g_assert_cmpint (session->active, ==, 1);
+  g_assert_true (session->show_sidebar);
+}
+
+static gboolean
+has_n_editors_and_active (PalangWindow *window, gpointer file)
+{
+  return palang_window_get_n_editors (window) == 2 && active_file_is (window, file);
+}
+
+/* Tabs come back in order, the active one selected; missing files are
+ * skipped. */
+static void
+test_restore_session (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSession) session = palang_session_new ();
+  g_autoptr (GFile) a = write_file (fixture, "a.c", "");
+  g_autoptr (GFile) b = write_file (fixture, "b.c", "");
+  g_autofree char *missing_path = g_build_filename (fixture->dir, "missing.c", NULL);
+  PalangEditor *first;
+
+  session->folder = g_file_new_for_path (fixture->dir);
+  g_ptr_array_add (session->files, g_object_ref (a));
+  g_ptr_array_add (session->files, g_file_new_for_path (missing_path));
+  g_ptr_array_add (session->files, g_object_ref (b));
+  session->active = 0;
+  session->show_sidebar = TRUE;
+
+  palang_window_restore_session (fixture->window, session);
+  wait_until (fixture->window, has_n_editors_and_active, a);
+  run_main_loop_briefly ();  /* nothing else should change afterwards */
+
+  g_assert_cmpuint (palang_window_get_n_editors (fixture->window), ==, 2);
+  g_assert_true (active_file_is (fixture->window, a));
+  g_assert_true (g_file_equal (palang_window_get_folder (fixture->window), session->folder));
+
+  /* Order: a.c, then b.c. */
+  first = palang_window_get_active_editor (fixture->window);
+  g_assert_true (g_file_equal (palang_document_get_file (palang_editor_get_document (first)), a));
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.close-tab", NULL);
+  g_assert_true (active_file_is (fixture->window, b));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -461,6 +612,11 @@ main (int   argc,
             test_close_modified_tab_cancel_then_discard);
   ADD_TEST ("/window/close-modified-tab-save", test_close_modified_tab_save);
   ADD_TEST ("/window/close-window-with-changes", test_close_window_with_changes);
+  ADD_TEST ("/window/reloads-unmodified-file", test_reloads_unmodified_file);
+  ADD_TEST ("/window/modified-file-shows-banner", test_modified_file_shows_banner);
+  ADD_TEST ("/window/deleted-file-shows-banner", test_deleted_file_shows_banner);
+  ADD_TEST ("/window/dup-session", test_dup_session);
+  ADD_TEST ("/window/restore-session", test_restore_session);
 
 #undef ADD_TEST
 

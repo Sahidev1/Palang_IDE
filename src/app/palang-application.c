@@ -3,7 +3,8 @@
  * GApplication lifecycle, in order:
  *   startup  — runs once when the app starts: initialize libraries, actions.
  *   activate — runs when the app is launched (also when the user launches it
- *              again while it is already running): show a window.
+ *              again while it is already running): show a window, restoring
+ *              what was open last time.
  *   open     — like activate, but with files or a folder to open
  *              ("palang main.c", "palang ~/projects/foo").
  *   shutdown — runs once before exit.
@@ -123,8 +124,21 @@ palang_application_startup (GApplication *app)
 static void
 palang_application_activate (GApplication *app)
 {
-  /* Launching Palang again while it runs reuses the existing window. */
-  gtk_window_present (GTK_WINDOW (get_or_create_window (app)));
+  GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (app));
+
+  /* Launching Palang again while it runs reuses the existing window. A new
+   * window starts with what was open last time. */
+  if (window == NULL)
+    {
+      g_autofree char *path = palang_session_default_path ();
+      g_autoptr (PalangSession) session = palang_session_load (path);
+
+      window = GTK_WINDOW (palang_window_new (PALANG_APPLICATION (app)));
+      if (session != NULL)
+        palang_window_restore_session (PALANG_WINDOW (window), session);
+    }
+
+  gtk_window_present (window);
 }
 
 /* "palang file1.c file2.c" — called instead of activate when files are

@@ -6,6 +6,7 @@
 
 #include "palang-application.h"
 #include "palang-editor.h"
+#include "palang-session.h"
 
 G_BEGIN_DECLS
 
@@ -35,5 +36,14 @@ void          palang_window_new_document      (PalangWindow *self);
 PalangEditor *palang_window_get_active_editor (PalangWindow *self);
 
 guint         palang_window_get_n_editors     (PalangWindow *self);
+
+/* Returns: (transfer full): what's open now, for saving (see
+ * palang-session.h). Never-saved documents are left out. */
+PalangSession *palang_window_dup_session      (PalangWindow *self);
+
+/* Opens the folder and files of @session, in order, and selects the tab
+ * that was active. Missing files and folders are skipped. */
+void          palang_window_restore_session   (PalangWindow        *self,
+                                               const PalangSession *session);
 
 G_END_DECLS

@@ -7,6 +7,10 @@
  *   - picking the syntax-highlighting language from the file name/content.
  *
  * All file I/O in Palang goes through this type (see PLAN.md §3).
+ *
+ * It also watches its file. When another program changes or deletes it,
+ * the document emits "changed-on-disk" (gboolean deleted). Our own saves
+ * never trigger it.
  */
 
 #pragma once
