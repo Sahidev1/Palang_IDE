@@ -1,5 +1,6 @@
 # Meson build directories
 /build/
+/build-*/
 /_build/
 
 # Debian packaging output
@@ -12,3 +13,6 @@
 # Editor files
 *~
 *.swp
+
+# Hidden files
+.*
