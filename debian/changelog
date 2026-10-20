@@ -1,0 +1,6 @@
+palang (0.1.0-1) unstable; urgency=medium
+
+  * Phase 1: tabs, file tree, find and replace, settings, light/dark
+    style, following changes on disk, session restore.
+
+ -- Sahidev1 <theoddrogue@gmail.com>  Tue, 20 Oct 2026 12:00:00 +0200

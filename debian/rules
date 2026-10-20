@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+# Builds Palang with Meson as a release build (no sanitizers) and runs the
+# test suite; the UI tests use a virtual display (xvfb-run).
+
+%:
+	dh $@ --buildsystem=meson
+
+override_dh_auto_configure:
+	dh_auto_configure -- -Dbuildtype=release -Db_sanitize=none

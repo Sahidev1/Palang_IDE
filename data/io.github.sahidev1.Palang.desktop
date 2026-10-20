@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Palang
+GenericName=Code Editor
+Comment=A lightweight IDE for Linux
+Exec=palang %F
+Icon=io.github.sahidev1.Palang
+Terminal=false
+Type=Application
+Categories=Development;IDE;TextEditor;GTK;
+Keywords=code;editor;programming;development;
+MimeType=text/plain;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-python;text/x-script.python;text/x-makefile;text/markdown;application/x-shellscript;application/json;application/xml;text/x-meson;
+StartupNotify=true
