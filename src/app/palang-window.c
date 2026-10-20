@@ -1,68 +1,752 @@
-/* palang-window.c — the main window.
+/* palang-window.c — the main window: tabs, file actions, close prompts.
  *
- * The window's layout is described in data/ui/palang-window.ui (a GtkBuilder
- * "template"). This file adds the behaviour: for now, one GtkSourceView with
- * C syntax highlighting whose colour theme follows the system light/dark
- * setting.
+ * Layout is in data/ui/palang-window.ui. Each tab (an AdwTabPage in the
+ * AdwTabView) holds one PalangEditor, which holds one PalangDocument.
  *
- * Phase 1 replaces the single editor with a file tree and tabs.
+ * Sections of this file:
+ *   - Tabs: adding, finding, and keeping the window title in sync
+ *   - Opening files
+ *   - Saving (Save, Save As, Save All)
+ *   - Closing a tab with unsaved changes
+ *   - Closing the window with unsaved changes
+ *   - Actions (what menu items and shortcuts call)
  */
 
 #include "config.h"
 
-#include <gtksourceview/gtksource.h>
-
+#include "palang-save-flow.h"
 #include "palang-window.h"
 
 struct _PalangWindow
 {
   AdwApplicationWindow parent_instance;
 
-  /* Template child: GTK fills this pointer in from the .ui file (see
-   * gtk_widget_class_bind_template_child below). The window owns it. */
-  GtkSourceView *source_view;
+  /* Template children */
+  AdwWindowTitle  *window_title;
+  AdwTabBar       *tab_bar;
+  AdwToastOverlay *toast_overlay;
+  GtkStack        *stack;
+  AdwTabView      *tab_view;
+
+  /* Bindings that show the selected editor's title/path in the header bar.
+   * We hold a reference so we can safely unbind them when the selection
+   * changes, even if the old editor is already gone. */
+  GBinding *title_binding;
+  GBinding *subtitle_binding;
+  GBinding *window_title_binding;  /* title the taskbar shows */
 };
 
 G_DEFINE_FINAL_TYPE (PalangWindow, palang_window, ADW_TYPE_APPLICATION_WINDOW)
 
-static GtkSourceBuffer *
-get_source_buffer (PalangWindow *self)
+static void
+show_toast (PalangWindow *self,
+            const char   *message)
 {
-  /* A GtkSourceView always creates a GtkSourceBuffer as its buffer, so this
-   * cast is safe. "transfer none": we don't own the returned buffer. */
-  return GTK_SOURCE_BUFFER (gtk_text_view_get_buffer (GTK_TEXT_VIEW (self->source_view)));
+  adw_toast_overlay_add_toast (self->toast_overlay, adw_toast_new (message));
+}
+
+/* Shows an error from a save, unless the user simply cancelled a dialog. */
+static void
+show_save_error (PalangWindow   *self,
+                 PalangDocument *document,
+                 const GError   *error)
+{
+  g_autofree char *title = NULL;
+  g_autofree char *message = NULL;
+
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    return;
+
+  title = palang_document_dup_title (document);
+  message = g_strdup_printf ("Could not save “%s”: %s", title, error->message);
+  show_toast (self, message);
+}
+
+static PalangEditor *
+editor_for_page (AdwTabPage *page)
+{
+  return PALANG_EDITOR (adw_tab_page_get_child (page));
+}
+
+/* ---- Tabs --------------------------------------------------------------- */
+
+/* Turns "main.c" into "main.c — Palang" for the taskbar. */
+static gboolean
+add_app_name (GBinding     *binding,
+              const GValue *from_value,
+              GValue       *to_value,
+              gpointer      user_data)
+{
+  g_value_take_string (to_value,
+                       g_strdup_printf ("%s — Palang", g_value_get_string (from_value)));
+  return TRUE;
 }
 
 static void
-update_style_scheme (PalangWindow *self)
+clear_binding (GBinding **binding)
 {
-  AdwStyleManager *style_manager = adw_style_manager_get_default ();
-  GtkSourceStyleSchemeManager *schemes = gtk_source_style_scheme_manager_get_default ();
-  const char *scheme_id;
+  if (*binding == NULL)
+    return;
 
-  /* "Adwaita" and "Adwaita-dark" ship with GtkSourceView 5 and match the
-   * libadwaita look. */
-  scheme_id = adw_style_manager_get_dark (style_manager) ? "Adwaita-dark" : "Adwaita";
-
-  gtk_source_buffer_set_style_scheme (get_source_buffer (self),
-                                      gtk_source_style_scheme_manager_get_scheme (schemes, scheme_id));
+  g_binding_unbind (*binding);
+  g_clear_object (binding);
 }
 
-/* Called whenever AdwStyleManager's "dark" property changes, i.e. when the
- * user switches the system between light and dark mode. */
+/* Header bar and taskbar show the selected editor's title (and path). */
 static void
-on_dark_changed (AdwStyleManager *style_manager,
-                 GParamSpec      *pspec,
-                 PalangWindow    *self)
+on_selected_page_changed (AdwTabView   *tab_view,
+                          GParamSpec   *pspec,
+                          PalangWindow *self)
 {
-  update_style_scheme (self);
+  AdwTabPage *page = adw_tab_view_get_selected_page (tab_view);
+
+  clear_binding (&self->title_binding);
+  clear_binding (&self->subtitle_binding);
+  clear_binding (&self->window_title_binding);
+
+  if (page == NULL)
+    {
+      adw_window_title_set_title (self->window_title, "Palang");
+      adw_window_title_set_subtitle (self->window_title, NULL);
+      gtk_window_set_title (GTK_WINDOW (self), "Palang");
+      return;
+    }
+
+  /* SYNC_CREATE copies the current value right away; afterwards GObject
+   * copies it whenever the editor's property changes. */
+  self->title_binding =
+    g_object_ref (g_object_bind_property (editor_for_page (page), "title",
+                                          self->window_title, "title",
+                                          G_BINDING_SYNC_CREATE));
+  self->subtitle_binding =
+    g_object_ref (g_object_bind_property (editor_for_page (page), "path",
+                                          self->window_title, "subtitle",
+                                          G_BINDING_SYNC_CREATE));
+  self->window_title_binding =
+    g_object_ref (g_object_bind_property_full (editor_for_page (page), "title",
+                                               self, "title",
+                                               G_BINDING_SYNC_CREATE,
+                                               add_app_name, NULL, NULL, NULL));
 }
+
+/* Enables/disables actions and switches between the "No Open Files" page
+ * and the tabs. */
+static void
+on_n_pages_changed (AdwTabView   *tab_view,
+                    GParamSpec   *pspec,
+                    PalangWindow *self)
+{
+  gboolean has_tabs = adw_tab_view_get_n_pages (tab_view) > 0;
+
+  gtk_stack_set_visible_child_name (self->stack, has_tabs ? "tabs" : "empty");
+  gtk_widget_set_visible (GTK_WIDGET (self->tab_bar), has_tabs);
+
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.save", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.save-as", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.save-all", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.close-tab", has_tabs);
+}
+
+/* Adds a tab for @document, selects it and focuses its text. */
+static AdwTabPage *
+add_editor (PalangWindow   *self,
+            PalangDocument *document)
+{
+  PalangEditor *editor = palang_editor_new (document);
+  AdwTabPage *page = adw_tab_view_append (self->tab_view, GTK_WIDGET (editor));
+
+  /* The tab label and tooltip follow the editor's title and path. */
+  g_object_bind_property (editor, "title", page, "title", G_BINDING_SYNC_CREATE);
+  g_object_bind_property (editor, "path", page, "tooltip", G_BINDING_SYNC_CREATE);
+
+  adw_tab_view_set_selected_page (self->tab_view, page);
+  gtk_widget_grab_focus (GTK_WIDGET (editor));
+
+  return page;
+}
+
+/* Returns: (transfer none) (nullable): the tab showing @file, if any. */
+static AdwTabPage *
+find_page_for_file (PalangWindow *self,
+                    GFile        *file)
+{
+  guint n_pages = adw_tab_view_get_n_pages (self->tab_view);
+
+  for (guint i = 0; i < n_pages; i++)
+    {
+      AdwTabPage *page = adw_tab_view_get_nth_page (self->tab_view, i);
+      GFile *page_file = palang_document_get_file (palang_editor_get_document (editor_for_page (page)));
+
+      if (page_file != NULL && g_file_equal (page_file, file))
+        return page;
+    }
+
+  return NULL;
+}
+
+/* A never-saved, untouched, empty document: opening a file replaces it
+ * instead of leaving a useless "Untitled" tab behind. */
+static gboolean
+is_blank_untitled (PalangEditor *editor)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (palang_editor_get_document (editor));
+
+  return palang_document_get_file (PALANG_DOCUMENT (buffer)) == NULL &&
+         !gtk_text_buffer_get_modified (buffer) &&
+         gtk_text_buffer_get_char_count (buffer) == 0;
+}
+
+/* Returns: (transfer container): the documents with unsaved changes. Free
+ * the array with g_ptr_array_unref(); the documents aren't owned by it. */
+static GPtrArray *
+collect_modified_documents (PalangWindow *self)
+{
+  GPtrArray *documents = g_ptr_array_new ();
+  guint n_pages = adw_tab_view_get_n_pages (self->tab_view);
+
+  for (guint i = 0; i < n_pages; i++)
+    {
+      AdwTabPage *page = adw_tab_view_get_nth_page (self->tab_view, i);
+      PalangDocument *document = palang_editor_get_document (editor_for_page (page));
+
+      if (gtk_text_buffer_get_modified (GTK_TEXT_BUFFER (document)))
+        g_ptr_array_add (documents, document);
+    }
+
+  return documents;
+}
+
+PalangEditor *
+palang_window_get_active_editor (PalangWindow *self)
+{
+  AdwTabPage *page;
+
+  g_return_val_if_fail (PALANG_IS_WINDOW (self), NULL);
+
+  page = adw_tab_view_get_selected_page (self->tab_view);
+  return page != NULL ? editor_for_page (page) : NULL;
+}
+
+guint
+palang_window_get_n_editors (PalangWindow *self)
+{
+  g_return_val_if_fail (PALANG_IS_WINDOW (self), 0);
+
+  return adw_tab_view_get_n_pages (self->tab_view);
+}
+
+void
+palang_window_new_document (PalangWindow *self)
+{
+  g_autoptr (PalangDocument) document = palang_document_new ();
+
+  g_return_if_fail (PALANG_IS_WINDOW (self));
+
+  add_editor (self, document);
+}
+
+/* ---- Opening files ------------------------------------------------------ */
+
+static void
+on_file_loaded (GObject      *source,
+                GAsyncResult *result,
+                gpointer      user_data)
+{
+  PalangDocument *document = PALANG_DOCUMENT (source);
+  g_autoptr (PalangWindow) self = user_data;  /* reference taken in open_file */
+  g_autoptr (GError) error = NULL;
+  PalangEditor *active;
+
+  if (!palang_document_load_finish (document, result, &error))
+    {
+      g_autofree char *message = g_strdup_printf ("Could not open file: %s", error->message);
+
+      if (self->toast_overlay != NULL)
+        show_toast (self, message);
+      return;
+    }
+
+  /* The window may have been closed while the file was loading. */
+  if (self->tab_view == NULL)
+    return;
+
+  active = palang_window_get_active_editor (self);
+  if (active != NULL && is_blank_untitled (active))
+    adw_tab_view_close_page (self->tab_view,
+                             adw_tab_view_get_selected_page (self->tab_view));
+
+  add_editor (self, document);
+}
+
+void
+palang_window_open_file (PalangWindow *self,
+                         GFile        *file)
+{
+  g_autoptr (PalangDocument) document = NULL;
+  AdwTabPage *existing;
+
+  g_return_if_fail (PALANG_IS_WINDOW (self));
+  g_return_if_fail (G_IS_FILE (file));
+
+  existing = find_page_for_file (self, file);
+  if (existing != NULL)
+    {
+      adw_tab_view_set_selected_page (self->tab_view, existing);
+      return;
+    }
+
+  /* The load operation keeps the document alive until on_file_loaded; we
+   * pass a reference to the window along so it can't disappear meanwhile. */
+  document = palang_document_new ();
+  palang_document_load_async (document, file, NULL, on_file_loaded, g_object_ref (self));
+}
+
+static void
+on_open_dialog_done (GObject      *source,
+                     GAsyncResult *result,
+                     gpointer      user_data)
+{
+  g_autoptr (PalangWindow) self = user_data;
+  g_autoptr (GListModel) files = NULL;
+  guint n_files;
+
+  /* NULL when the user cancelled the dialog; nothing to do then. */
+  files = gtk_file_dialog_open_multiple_finish (GTK_FILE_DIALOG (source), result, NULL);
+  if (files == NULL)
+    return;
+
+  n_files = g_list_model_get_n_items (files);
+  for (guint i = 0; i < n_files; i++)
+    {
+      g_autoptr (GFile) file = g_list_model_get_item (files, i);
+      palang_window_open_file (self, file);
+    }
+}
+
+/* ---- Saving ------------------------------------------------------------- */
+
+static void
+on_save_done (GObject      *source,
+              GAsyncResult *result,
+              gpointer      user_data)
+{
+  PalangDocument *document = PALANG_DOCUMENT (source);
+  g_autoptr (PalangWindow) self = user_data;
+  g_autoptr (GError) error = NULL;
+
+  if (!palang_save_document_finish (document, result, &error) && self->toast_overlay != NULL)
+    show_save_error (self, document, error);
+}
+
+static void
+save_active (PalangWindow *self,
+             gboolean      ask_location)
+{
+  PalangEditor *editor = palang_window_get_active_editor (self);
+
+  if (editor == NULL)
+    return;
+
+  palang_save_document_async (GTK_WINDOW (self), palang_editor_get_document (editor),
+                              ask_location, NULL, on_save_done, g_object_ref (self));
+}
+
+/* Saving several documents, one after another (Save All, and "Save All"
+ * when closing the window). Stops at the first failure or cancel, so the
+ * user isn't shown a pile of dialogs after pressing Cancel once. */
+
+typedef struct {
+  PalangWindow *window;     /* owned */
+  GPtrArray    *documents;  /* owns a reference to each document */
+  guint         next;       /* index of the next document to save */
+} SaveAllData;
+
+static void
+save_all_data_free (SaveAllData *data)
+{
+  g_clear_object (&data->window);
+  g_clear_pointer (&data->documents, g_ptr_array_unref);
+  g_free (data);
+}
+
+static void save_next (GTask *task);
+
+static void
+on_one_saved (GObject      *source,
+              GAsyncResult *result,
+              gpointer      user_data)
+{
+  GTask *task = user_data;
+  GError *error = NULL;
+
+  if (!palang_save_document_finish (PALANG_DOCUMENT (source), result, &error))
+    {
+      g_task_return_error (task, error);
+      g_object_unref (task);
+      return;
+    }
+
+  save_next (task);
+}
+
+static void
+save_next (GTask *task)
+{
+  SaveAllData *data = g_task_get_task_data (task);
+
+  if (data->next >= data->documents->len)
+    {
+      g_task_return_boolean (task, TRUE);
+      g_object_unref (task);
+      return;
+    }
+
+  palang_save_document_async (GTK_WINDOW (data->window),
+                              g_ptr_array_index (data->documents, data->next++),
+                              FALSE, NULL, on_one_saved, task);
+}
+
+/* Saves @documents in order. Finishes with TRUE if all were saved. */
+static void
+save_documents_async (PalangWindow        *self,
+                      GPtrArray           *documents,
+                      GAsyncReadyCallback  callback,
+                      gpointer             user_data)
+{
+  GTask *task = g_task_new (self, NULL, callback, user_data);
+  SaveAllData *data = g_new0 (SaveAllData, 1);
+
+  data->window = g_object_ref (self);
+  data->documents = g_ptr_array_new_with_free_func (g_object_unref);
+  for (guint i = 0; i < documents->len; i++)
+    g_ptr_array_add (data->documents, g_object_ref (g_ptr_array_index (documents, i)));
+
+  g_task_set_task_data (task, data, (GDestroyNotify) save_all_data_free);
+  save_next (task);
+}
+
+static gboolean
+save_documents_finish (PalangWindow  *self,
+                       GAsyncResult  *result,
+                       GError       **error)
+{
+  return g_task_propagate_boolean (G_TASK (result), error);
+}
+
+static void
+on_save_all_done (GObject      *source,
+                  GAsyncResult *result,
+                  gpointer      user_data)
+{
+  PalangWindow *self = PALANG_WINDOW (source);
+  g_autoptr (GError) error = NULL;
+
+  if (!save_documents_finish (self, result, &error) &&
+      !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    show_toast (self, error->message);
+}
+
+/* ---- Closing a tab with unsaved changes --------------------------------- */
+
+/* Context for one "close this tab?" prompt. */
+typedef struct {
+  PalangWindow *window;  /* owned */
+  AdwTabPage   *page;    /* owned */
+} ClosePageData;
+
+static void
+close_page_data_free (ClosePageData *data)
+{
+  g_clear_object (&data->window);
+  g_clear_object (&data->page);
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ClosePageData, close_page_data_free)
+
+/* Tells the tab view whether to really close the page. */
+static void
+finish_close_page (ClosePageData *data,
+                   gboolean       close)
+{
+  if (data->window->tab_view != NULL)
+    adw_tab_view_close_page_finish (data->window->tab_view, data->page, close);
+}
+
+static void
+on_close_page_saved (GObject      *source,
+                     GAsyncResult *result,
+                     gpointer      user_data)
+{
+  g_autoptr (ClosePageData) data = user_data;
+  g_autoptr (GError) error = NULL;
+  gboolean saved = palang_save_document_finish (PALANG_DOCUMENT (source), result, &error);
+
+  if (!saved && data->window->toast_overlay != NULL)
+    show_save_error (data->window, PALANG_DOCUMENT (source), error);
+
+  finish_close_page (data, saved);
+}
+
+static void
+on_close_page_response (GObject      *source,
+                        GAsyncResult *result,
+                        gpointer      user_data)
+{
+  g_autoptr (ClosePageData) data = user_data;
+  const char *response = adw_alert_dialog_choose_finish (ADW_ALERT_DIALOG (source), result);
+  PalangDocument *document = palang_editor_get_document (editor_for_page (data->page));
+
+  if (g_strcmp0 (response, "save") == 0)
+    {
+      /* Read data->window *before* the call: C doesn't define the order in
+       * which arguments are evaluated, so g_steal_pointer (&data) (which sets
+       * data to NULL) might run first. */
+      GtkWindow *parent = GTK_WINDOW (data->window);
+
+      /* The save decides; ownership of `data` moves to on_close_page_saved. */
+      palang_save_document_async (parent, document, FALSE, NULL,
+                                  on_close_page_saved, g_steal_pointer (&data));
+      return;
+    }
+
+  finish_close_page (data, g_strcmp0 (response, "discard") == 0);
+}
+
+/* AdwTabView emits "close-page" when a tab is about to close (close button,
+ * Ctrl+W, …). Returning GDK_EVENT_STOP means "we'll decide", and we must
+ * then call adw_tab_view_close_page_finish() — possibly later, after asking
+ * the user. */
+static gboolean
+on_close_page (AdwTabView   *tab_view,
+               AdwTabPage   *page,
+               PalangWindow *self)
+{
+  PalangDocument *document = palang_editor_get_document (editor_for_page (page));
+  g_autofree char *title = NULL;
+  ClosePageData *data;
+  AdwDialog *dialog;
+
+  if (!gtk_text_buffer_get_modified (GTK_TEXT_BUFFER (document)))
+    {
+      adw_tab_view_close_page_finish (tab_view, page, TRUE);
+      return GDK_EVENT_STOP;
+    }
+
+  /* Show the tab the question is about. */
+  adw_tab_view_set_selected_page (tab_view, page);
+
+  title = palang_document_dup_title (document);
+  dialog = adw_alert_dialog_new ("Save Changes?", NULL);
+  adw_alert_dialog_format_body (ADW_ALERT_DIALOG (dialog),
+                                "“%s” has unsaved changes. Changes which are not "
+                                "saved will be lost.",
+                                title);
+  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog),
+                                  "cancel", "_Cancel",
+                                  "discard", "_Discard",
+                                  "save", "_Save",
+                                  NULL);
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "discard",
+                                            ADW_RESPONSE_DESTRUCTIVE);
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "save",
+                                            ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "save");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+
+  data = g_new0 (ClosePageData, 1);
+  data->window = g_object_ref (self);
+  data->page = g_object_ref (page);
+
+  adw_alert_dialog_choose (ADW_ALERT_DIALOG (dialog), GTK_WIDGET (self), NULL,
+                           on_close_page_response, data);
+
+  return GDK_EVENT_STOP;
+}
+
+/* ---- Closing the window with unsaved changes ---------------------------- */
+
+/* The user has decided (discard or saved everything): close for real.
+ *
+ * We destroy the window directly instead of calling gtk_window_close()
+ * again. That would emit "close-request" once more, and libadwaita swallows
+ * close requests while one of its dialogs is still finishing its closing
+ * animation — so after a quick "Save All" the window would stay open. */
+static void
+close_without_asking (PalangWindow *self)
+{
+  gtk_window_destroy (GTK_WINDOW (self));
+}
+
+static void
+on_close_window_saved (GObject      *source,
+                       GAsyncResult *result,
+                       gpointer      user_data)
+{
+  PalangWindow *self = PALANG_WINDOW (source);
+  g_autoptr (GError) error = NULL;
+
+  if (save_documents_finish (self, result, &error))
+    close_without_asking (self);
+  else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    show_toast (self, error->message);
+}
+
+static void
+on_close_window_response (GObject      *source,
+                          GAsyncResult *result,
+                          gpointer      user_data)
+{
+  g_autoptr (PalangWindow) self = user_data;
+  const char *response = adw_alert_dialog_choose_finish (ADW_ALERT_DIALOG (source), result);
+
+  if (g_strcmp0 (response, "discard") == 0)
+    {
+      close_without_asking (self);
+    }
+  else if (g_strcmp0 (response, "save") == 0)
+    {
+      g_autoptr (GPtrArray) documents = collect_modified_documents (self);
+      save_documents_async (self, documents, on_close_window_saved, NULL);
+    }
+}
+
+/* Called when the user closes the window (X button, Ctrl+Q). Returning TRUE
+ * keeps the window open. */
+static gboolean
+palang_window_close_request (GtkWindow *window)
+{
+  PalangWindow *self = PALANG_WINDOW (window);
+  g_autoptr (GPtrArray) documents = NULL;
+  g_autofree char *body = NULL;
+  AdwDialog *dialog;
+
+  documents = collect_modified_documents (self);
+  if (documents->len == 0)
+    return GTK_WINDOW_CLASS (palang_window_parent_class)->close_request (window);
+
+  if (documents->len == 1)
+    {
+      g_autofree char *title = palang_document_dup_title (g_ptr_array_index (documents, 0));
+      body = g_strdup_printf ("“%s” has unsaved changes.", title);
+    }
+  else
+    {
+      body = g_strdup_printf ("%u open documents have unsaved changes.", documents->len);
+    }
+
+  dialog = adw_alert_dialog_new ("Save Changes Before Closing?", body);
+  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog),
+                                  "cancel", "_Cancel",
+                                  "discard", "_Discard All",
+                                  "save", "_Save All",
+                                  NULL);
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "discard",
+                                            ADW_RESPONSE_DESTRUCTIVE);
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "save",
+                                            ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "save");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+
+  adw_alert_dialog_choose (ADW_ALERT_DIALOG (dialog), GTK_WIDGET (self), NULL,
+                           on_close_window_response, g_object_ref (self));
+
+  return TRUE;
+}
+
+/* ---- Actions ------------------------------------------------------------ */
+
+/* Actions installed with gtk_widget_class_install_action() are called with
+ * the widget, the action's name and its parameter (unused here). */
+
+static void
+new_action (GtkWidget  *widget,
+            const char *action_name,
+            GVariant   *parameter)
+{
+  palang_window_new_document (PALANG_WINDOW (widget));
+}
+
+static void
+open_action (GtkWidget  *widget,
+             const char *action_name,
+             GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  g_autoptr (GtkFileDialog) dialog = gtk_file_dialog_new ();
+  PalangEditor *active = palang_window_get_active_editor (self);
+
+  gtk_file_dialog_set_title (dialog, "Open Files");
+
+  /* Start in the folder of the current file, if it has one. */
+  if (active != NULL)
+    {
+      GFile *file = palang_document_get_file (palang_editor_get_document (active));
+
+      if (file != NULL)
+        {
+          g_autoptr (GFile) folder = g_file_get_parent (file);
+          gtk_file_dialog_set_initial_folder (dialog, folder);
+        }
+    }
+
+  gtk_file_dialog_open_multiple (dialog, GTK_WINDOW (self), NULL,
+                                 on_open_dialog_done, g_object_ref (self));
+}
+
+static void
+save_action (GtkWidget  *widget,
+             const char *action_name,
+             GVariant   *parameter)
+{
+  save_active (PALANG_WINDOW (widget), FALSE);
+}
+
+static void
+save_as_action (GtkWidget  *widget,
+                const char *action_name,
+                GVariant   *parameter)
+{
+  save_active (PALANG_WINDOW (widget), TRUE);
+}
+
+static void
+save_all_action (GtkWidget  *widget,
+                 const char *action_name,
+                 GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  g_autoptr (GPtrArray) documents = collect_modified_documents (self);
+
+  if (documents->len > 0)
+    save_documents_async (self, documents, on_save_all_done, NULL);
+}
+
+static void
+close_tab_action (GtkWidget  *widget,
+                  const char *action_name,
+                  GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  AdwTabPage *page = adw_tab_view_get_selected_page (self->tab_view);
+
+  /* This emits "close-page", which asks about unsaved changes. */
+  if (page != NULL)
+    adw_tab_view_close_page (self->tab_view, page);
+}
+
+/* ---- GObject boilerplate ------------------------------------------------ */
 
 static void
 palang_window_dispose (GObject *object)
 {
-  /* Release the template children before the window itself goes away. */
-  gtk_widget_dispose_template (GTK_WIDGET (object), PALANG_TYPE_WINDOW);
+  PalangWindow *self = PALANG_WINDOW (object);
+
+  g_clear_object (&self->title_binding);
+  g_clear_object (&self->subtitle_binding);
+  g_clear_object (&self->window_title_binding);
+
+  gtk_widget_dispose_template (GTK_WIDGET (self), PALANG_TYPE_WINDOW);
 
   G_OBJECT_CLASS (palang_window_parent_class)->dispose (object);
 }
@@ -72,49 +756,42 @@ palang_window_class_init (PalangWindowClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+  GtkWindowClass *window_class = GTK_WINDOW_CLASS (klass);
 
   object_class->dispose = palang_window_dispose;
-
-  /* The .ui file uses <object class="GtkSourceView">, so that type must be
-   * registered before the template is parsed. */
-  g_type_ensure (GTK_SOURCE_TYPE_VIEW);
+  window_class->close_request = palang_window_close_request;
 
   gtk_widget_class_set_template_from_resource (widget_class,
                                                RESOURCE_PATH "/ui/palang-window.ui");
-  gtk_widget_class_bind_template_child (widget_class, PalangWindow, source_view);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, window_title);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, tab_bar);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, toast_overlay);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, stack);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, tab_view);
+
+  /* Keyboard shortcuts for these are set in palang-application.c. */
+  gtk_widget_class_install_action (widget_class, "win.new", NULL, new_action);
+  gtk_widget_class_install_action (widget_class, "win.open", NULL, open_action);
+  gtk_widget_class_install_action (widget_class, "win.save", NULL, save_action);
+  gtk_widget_class_install_action (widget_class, "win.save-as", NULL, save_as_action);
+  gtk_widget_class_install_action (widget_class, "win.save-all", NULL, save_all_action);
+  gtk_widget_class_install_action (widget_class, "win.close-tab", NULL, close_tab_action);
 }
 
 static void
 palang_window_init (PalangWindow *self)
 {
-  GtkSourceLanguageManager *languages = gtk_source_language_manager_get_default ();
-  GtkSourceBuffer *buffer;
-
-  /* Build the widgets described in the template. After this call,
-   * self->source_view is valid. */
   gtk_widget_init_template (GTK_WIDGET (self));
 
-  buffer = get_source_buffer (self);
-  gtk_source_buffer_set_language (buffer,
-                                  gtk_source_language_manager_get_language (languages, "c"));
-  gtk_text_buffer_set_text (GTK_TEXT_BUFFER (buffer),
-                            "/* Welcome to Palang.\n"
-                            " * Opening files arrives in Phase 1. */\n"
-                            "\n"
-                            "int\n"
-                            "main (void)\n"
-                            "{\n"
-                            "  return 0;\n"
-                            "}\n",
-                            -1);
+  g_signal_connect (self->tab_view, "notify::selected-page",
+                    G_CALLBACK (on_selected_page_changed), self);
+  g_signal_connect (self->tab_view, "notify::n-pages",
+                    G_CALLBACK (on_n_pages_changed), self);
+  g_signal_connect (self->tab_view, "close-page",
+                    G_CALLBACK (on_close_page), self);
 
-  update_style_scheme (self);
-
-  /* g_signal_connect_object (not plain g_signal_connect) disconnects the
-   * handler automatically when the window is destroyed, so the style manager
-   * (which lives for the whole app) never calls into a freed window. */
-  g_signal_connect_object (adw_style_manager_get_default (), "notify::dark",
-                           G_CALLBACK (on_dark_changed), self, 0);
+  /* Start in the "no tabs" state. */
+  on_n_pages_changed (self->tab_view, NULL, self);
 }
 
 PalangWindow *

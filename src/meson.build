@@ -5,8 +5,10 @@ palang_inc  = include_directories('app', 'editor')
 # against the same code the app uses.
 libpalang = static_library('palang',
   'app/palang-application.c',
+  'app/palang-save-flow.c',
   'app/palang-window.c',
   'editor/palang-document.c',
+  'editor/palang-editor.c',
   dependencies: palang_deps,
   include_directories: [config_inc, palang_inc],
 )

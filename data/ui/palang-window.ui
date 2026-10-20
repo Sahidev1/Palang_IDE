@@ -1,31 +1,114 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Layout of the main window. Behaviour lives in src/app/palang-window.c. -->
 <interface>
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label">_New</attribute>
+        <attribute name="action">win.new</attribute>
+      </item>
+      <item>
+        <attribute name="label">_Open…</attribute>
+        <attribute name="action">win.open</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label">_Save</attribute>
+        <attribute name="action">win.save</attribute>
+      </item>
+      <item>
+        <attribute name="label">Save _As…</attribute>
+        <attribute name="action">win.save-as</attribute>
+      </item>
+      <item>
+        <attribute name="label">Save A_ll</attribute>
+        <attribute name="action">win.save-all</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label">_Close Tab</attribute>
+        <attribute name="action">win.close-tab</attribute>
+      </item>
+      <item>
+        <attribute name="label">_Quit</attribute>
+        <attribute name="action">app.quit</attribute>
+      </item>
+    </section>
+  </menu>
+
   <template class="PalangWindow" parent="AdwApplicationWindow">
     <property name="title">Palang</property>
     <property name="default-width">1000</property>
     <property name="default-height">700</property>
     <property name="content">
-      <!-- AdwToolbarView: a header bar on top, the main content below. -->
+      <!-- AdwToolbarView: header bar and tab bar on top, content below. -->
       <object class="AdwToolbarView">
         <child type="top">
-          <object class="AdwHeaderBar"/>
+          <object class="AdwHeaderBar">
+            <child type="start">
+              <object class="GtkButton">
+                <property name="label">_Open</property>
+                <property name="use-underline">true</property>
+                <property name="action-name">win.open</property>
+                <property name="tooltip-text">Open a File (Ctrl+O)</property>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton">
+                <property name="icon-name">tab-new-symbolic</property>
+                <property name="action-name">win.new</property>
+                <property name="tooltip-text">New File (Ctrl+N)</property>
+              </object>
+            </child>
+            <property name="title-widget">
+              <object class="AdwWindowTitle" id="window_title">
+                <property name="title">Palang</property>
+              </object>
+            </property>
+            <child type="end">
+              <object class="GtkMenuButton">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="menu-model">primary_menu</property>
+                <property name="primary">true</property>
+                <property name="tooltip-text">Main Menu</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="top">
+          <object class="AdwTabBar" id="tab_bar">
+            <property name="view">tab_view</property>
+            <property name="autohide">false</property>
+          </object>
         </child>
         <property name="content">
-          <object class="GtkScrolledWindow">
-            <property name="vexpand">true</property>
+          <!-- Shows error messages ("toasts") on top of the content. -->
+          <object class="AdwToastOverlay" id="toast_overlay">
             <property name="child">
-              <object class="GtkSourceView" id="source_view">
-                <property name="monospace">true</property>
-                <property name="show-line-numbers">true</property>
-                <property name="highlight-current-line">true</property>
-                <property name="auto-indent">true</property>
-                <property name="indent-width">2</property>
-                <property name="insert-spaces-instead-of-tabs">true</property>
-                <property name="tab-width">8</property>
-                <property name="top-margin">6</property>
-                <property name="bottom-margin">6</property>
-                <property name="left-margin">6</property>
+              <!-- "empty" when no tabs are open, "tabs" otherwise. -->
+              <object class="GtkStack" id="stack">
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">empty</property>
+                    <property name="child">
+                      <object class="AdwStatusPage">
+                        <property name="icon-name">text-editor-symbolic</property>
+                        <property name="title">No Open Files</property>
+                        <property name="description">Press Ctrl+O to open a file, or Ctrl+N to start a new one.</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">tabs</property>
+                    <property name="child">
+                      <object class="AdwTabView" id="tab_view"/>
+                    </property>
+                  </object>
+                </child>
               </object>
             </property>
           </object>
