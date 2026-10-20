@@ -27,12 +27,20 @@ Start Palang with `ninja -C build run` unless a test says otherwise.
 > here; Phase 1 can then add a manual light/dark setting.
 
 ### 3. A second launch reuses the window
-- [ ] With Palang already open, run `ninja -C build run` in a second terminal.
+- [x] With Palang already open, run `ninja -C build run` in a second terminal.
       No second window appears; the existing window comes to the front. The
       second command returns right away.
-	#FAILED CHECK .ERRDUMP.txt
+	PASSED on retest. The first attempt needed two clicks on the close button:
+	the second terminal had been started as a background child of the first.
+	From a fresh terminal it works. The leak report in .ERRDUMP.txt came from
+	IBus (the input-method library), not Palang; now suppressed in
+	tools/lsan.supp.
 ---
 
 ## Results notes
 
 <!-- Write anything unexpected here, e.g. "Test 2: theme didn't switch live". -->
+
+- Test 2: sahi's desktop is MATE, which reports no dark-mode preference to
+  apps, so libadwaita never switches. Moved to Phase 1: a System/Light/Dark
+  setting with a GTK-theme-name fallback (see PLAN.md, Phase 1).

@@ -7,3 +7,7 @@
 # fontconfig caches font configuration and match results for the lifetime of
 # the process and never frees them at exit.
 leak:libfontconfig.so
+
+# GTK's IBus input-method module leaks IBusText objects while handling focus
+# and key events (found in Phase 0 manual test 3).
+leak:libim-ibus.so
