@@ -302,7 +302,54 @@ formula changed
 | Formula | Python | Rust |
 |---|---|---|
 | `Σ(x) = 1 + x` | `def Σ(x): return 1 + x` | `fn sigma(x: f64) -> f64 { 1.0 + x }` |
-| `∑_(i=1)^n x_i^2` | `sum(x[i]**2 for i in range(1, n+1))` | `(1..=n).map(\|i\| x[i].powi(2)).sum::<f64>()` |
+| `∑_(i=1)^n x_i^2` | `sum(x[i-1]**2 for i in range(1, n+1))` | `(1..=n).map(\|i\| x[i-1].powi(2)).sum::<f64>()` |
+
+(The `i-1` comes from the index rule in §6.7: math counts from 1, arrays from 0.)
+
+### 6.7 Functions, scope and types
+
+Formulas can go anywhere a comment can, and Python/JavaScript are easy because they don't declare types. C, C++ and Rust need types, and a formula doesn't say what they are. This section collects what the generator must handle.
+
+**Two kinds of block:**
+| Kind | Example | Generates |
+|---|---|---|
+| Function definition | `f(x) = x^2 + 1` | `def f(x): return x**2 + 1` / `double f(double x) { return x*x + 1.0; }` |
+| Expression / assignment, inside a function | `E = 1/2 m v^2` | `E = 0.5 * m * v**2` / `double E = 0.5 * m * v * v;` |
+
+```python
+def kinetic(m, v):
+    # @math E = 1/2 m v^2   @f:…
+    E = 0.5 * m * v**2
+    # @end
+    return E
+```
+
+**Scope rules:**
+- **Indentation** comes from the marker line (tabs or spaces as in the file). In Python, wrong indentation breaks the program.
+- **Assign or declare:** for `y = …` the generator must know whether `y` already exists (`y = …;`) or is new (`double y = …;`, Rust `let` / `let mut`).
+- **Unknown names:** a formula using `v` where no variable `v` exists shows ⚠ instead of generating code that can't compile.
+- **Name collisions:** a function-defining formula `f(x) = …` in a file that already has an `f` shows ⚠.
+- **C has no nested functions:** function-defining blocks must be at the top level in C files (Python and Rust allow them nested).
+
+**Indexing: math counts from 1, code from 0.** In `∑_(i=1)^n x_i`, `x_1` is the first element, i.e. `x[0]`. Written naively, the code skips the first element and reads past the end (an IndexError in Python, a memory error in C). Default: **math index 1 = array index 0** (formulas from books and papers are 1-based); override per block with `@index 0` when the formula is already 0-based. The rule is part of the formula hash.
+
+**Imports and headers:** generated code may need `import math`, `#include <math.h>` (plus `-lm` when linking), or a Rust `use`. The block's status shows ⚠ "needs `import math`" with a one-click fix that adds it at the top of the file (outside the hidden block, so it's visible). Palang never edits build files silently.
+
+**Typing traps:**
+- **Integer division in C:** `1/2 * x` is always 0, so literals become `0.5` or `1.0/2.0`.
+- **Rust doesn't mix types:** `1 + x` with `x: f64` doesn't compile; it needs `1.0 + x`.
+- **Scalar or array?** Is `x` in `x_i` an array, and is `x` a Python list or a NumPy array?
+- **Return type:** is `f(n) = n!` an integer or a real number?
+
+**How types get decided** (the steps work together, in this order):
+1. **A default number type per project:** `double` (C/C++), `f64` (Rust). Literals are written to match (`1.0`, not `1`).
+2. **Hints from the notation:** `x_i` means indexable; the variable of `∑_(i=1)^n` is an integer; `n!` suggests an integer; in Python, NumPy when the file imports it.
+3. **Types of existing variables from the language server (Phase 2):** inside a function, `clangd` / `rust-analyzer` already know `m` is a `double`. This is deterministic and needs no AI, which is one more reason Phase 2 comes before Phase 5.
+4. **Optional annotations in the marker** when the default is wrong, e.g. `# @math f(n) = n!   @types n:int f:int64`. Types are part of the formula hash, so changing them regenerates the code.
+5. **Ask when unsure:** ⚠ with a quick choice ("`x` is: number / array / matrix"); the answer is saved as an annotation. AI is the last fallback, behind the usual approval.
+6. **Check the result:** language-server errors in the hidden code appear as ⚠ on the formula, so a type error shows without opening the code.
+
+**Scope for Phase 5:** start with **Python** (untyped, so most of this disappears), then C and Rust. Support both block kinds from the start.
 
 ---
 
@@ -322,6 +369,7 @@ formula changed
 3. **Math rendering engine** — custom GSK layout vs MicroTeX FFI (decide at Phase 5 stage 2).
 4. **Default AI provider** — local Ollama recommended; confirm whether to ship a "Claude Haiku" preset.
 5. **Phase order** — autocomplete (3) before math (4–5), or the reverse.
+6. **Math index base** — default "math index 1 = array index 0" with `@index 0` to override (§6.7); confirm before Phase 5.
 
 ## 9. Risks
 
@@ -329,6 +377,7 @@ formula changed
 |---|---|
 | Ghost text leaks into saves/undo/LSP | Single save path that skips ghost-text regions; tests for save/undo with a suggestion visible |
 | Hidden code is wrong and nobody notices | Deterministic Tier 1 first, approval for AI output, hash checks, "show code" toggle, status icons |
+| Generated math code compiles but is wrong (integer division, off-by-one indexing, wrong types) | Typed literals, the explicit index rule, language-server types and diagnostics shown on the formula, unit tests per target language for each trap in §6.7 |
 | Cursor movement into invisible regions behaves oddly | Treat hidden blocks as atomic; handle cursor keys explicitly around anchors; test early with a spike |
 | AI cost surprises | Bring-your-own key, budget cap, usage meter, local default |
 | Memory bugs in C (use-after-free, leaks, overruns) | Sanitizers always on in debug builds, `g_autoptr`, GLib containers, valgrind before releases, unit tests run under ASan |
