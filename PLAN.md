@@ -111,9 +111,10 @@ palang/
 - **Window layout:** header bar, left file tree, center tab view (`adw::TabView`/`TabBar`), optional bottom panel placeholder.
 - **File tree:** open folder, lazy-loaded `GtkTreeListModel` + `GtkListView` over `GtkDirectoryList`, icons, hidden-file toggle, refresh on disk changes (`GFileMonitor`).
 - **Tabs:** `AdwTabView` + `AdwTabBar`; open/close/reorder, dirty indicator, "unsaved changes" prompt on close/quit.
-- **Editor:** language auto-detect (`GtkSourceLanguageManager`), style schemes (light/dark following system via `AdwStyleManager`), line numbers, current-line highlight, auto-indent, bracket matching, tab width/spaces settings.
+- **Editor:** language auto-detect (`GtkSourceLanguageManager`), style schemes, line numbers, current-line highlight, auto-indent, bracket matching, tab width/spaces settings.
 - **File ops:** New, Open, Save, Save As, Save All (`GtkSourceFileLoader` / `GtkSourceFileSaver`, async), reload when changed on disk.
 - **Search:** find/replace in file (`GtkSourceSearchContext`), go to line.
+- **Theme (light/dark):** a **System / Light / Dark** setting (`AdwStyleManager:color-scheme`). "System" uses the desktop's dark-mode preference when it reports one. Some desktops don't: MATE (sahi's desktop) reports *no preference* and switches themes only by GTK theme name, which libadwaita ignores (found in Phase 0 manual test 2). Fallback: when the desktop reports no preference, watch `GtkSettings:gtk-theme-name` (MATE updates it live) and use dark when the name contains "dark".
 - **Settings:** `config.ini` via `GKeyFile` (font, theme, tab size, keybindings), basic preferences dialog (`AdwPreferencesDialog`).
 - **Session restore:** reopen last folder and tabs.
 - **Packaging:** first `.deb` with desktop entry and icon.

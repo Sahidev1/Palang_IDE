@@ -14,5 +14,6 @@
 *~
 *.swp
 
-# Hidden files
-.*
+# Local logs and error dumps
+.ERRDUMP*.txt
+*.log
