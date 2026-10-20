@@ -1,25 +1,66 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Contents of one tab. Behaviour lives in src/editor/palang-editor.c. -->
+<!-- Contents of one tab. Behaviour lives in src/editor/palang-editor.c.
+     The search bar is added at the top of the box in code, because it
+     needs the text view when it's created. -->
 <interface>
   <template class="PalangEditor" parent="AdwBin">
     <property name="child">
-      <object class="GtkScrolledWindow">
-        <property name="vexpand">true</property>
-        <property name="hexpand">true</property>
-        <property name="child">
-          <object class="GtkSourceView" id="view">
-            <property name="monospace">true</property>
-            <property name="show-line-numbers">true</property>
-            <property name="highlight-current-line">true</property>
-            <property name="auto-indent">true</property>
-            <property name="indent-width">2</property>
-            <property name="insert-spaces-instead-of-tabs">true</property>
-            <property name="tab-width">8</property>
-            <property name="top-margin">6</property>
-            <property name="bottom-margin">6</property>
-            <property name="left-margin">6</property>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+
+        <!-- "Go to line" bar, shown by Ctrl+G. -->
+        <child>
+          <object class="GtkRevealer" id="go_to_revealer">
+            <property name="transition-type">slide-down</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="spacing">6</property>
+                <style>
+                  <class name="toolbar"/>
+                </style>
+                <child>
+                  <object class="GtkEntry" id="go_to_entry">
+                    <property name="hexpand">true</property>
+                    <property name="placeholder-text">Go to line, e.g. 42 or 42:10</property>
+                    <property name="input-purpose">digits</property>
+                    <signal name="activate" handler="on_go_to_activate"/>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton">
+                    <property name="icon-name">window-close-symbolic</property>
+                    <property name="tooltip-text">Close (Esc)</property>
+                    <signal name="clicked" handler="on_go_to_close_clicked"/>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </property>
           </object>
-        </property>
+        </child>
+
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="vexpand">true</property>
+            <property name="hexpand">true</property>
+            <property name="child">
+              <object class="GtkSourceView" id="view">
+                <property name="monospace">true</property>
+                <property name="show-line-numbers">true</property>
+                <property name="highlight-current-line">true</property>
+                <property name="auto-indent">true</property>
+                <property name="indent-width">2</property>
+                <property name="insert-spaces-instead-of-tabs">true</property>
+                <property name="tab-width">8</property>
+                <property name="top-margin">6</property>
+                <property name="bottom-margin">6</property>
+                <property name="left-margin">6</property>
+              </object>
+            </property>
+          </object>
+        </child>
       </object>
     </property>
   </template>

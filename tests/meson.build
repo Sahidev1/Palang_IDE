@@ -22,6 +22,7 @@ xvfb_run = find_program('xvfb-run', required: false)
 ui_tests = {
   'window': 'test-window.c',
   'file-tree': 'test-file-tree.c',
+  'editor': 'test-editor.c',
 }
 
 foreach name, source : ui_tests

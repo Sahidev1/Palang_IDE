@@ -32,6 +32,20 @@
     </section>
     <section>
       <item>
+        <attribute name="label">_Find…</attribute>
+        <attribute name="action">win.find</attribute>
+      </item>
+      <item>
+        <attribute name="label">Find and _Replace…</attribute>
+        <attribute name="action">win.replace</attribute>
+      </item>
+      <item>
+        <attribute name="label">_Go to Line…</attribute>
+        <attribute name="action">win.go-to-line</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
         <attribute name="label">_Close Tab</attribute>
         <attribute name="action">win.close-tab</attribute>
       </item>

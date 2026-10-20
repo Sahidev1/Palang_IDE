@@ -149,6 +149,11 @@ on_n_pages_changed (AdwTabView   *tab_view,
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.save-as", has_tabs);
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.save-all", has_tabs);
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.close-tab", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.find", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.replace", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.find-next", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.find-previous", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.go-to-line", has_tabs);
 }
 
 /* Adds a tab for @document, selects it and focuses its text. */
@@ -773,6 +778,41 @@ toggle_sidebar_action (GtkWidget  *widget,
                                            !adw_overlay_split_view_get_show_sidebar (self->split_view));
 }
 
+/* Find / Replace / Go to line: forwarded to the editor in the current tab. */
+
+static void
+find_action (GtkWidget  *widget,
+             const char *action_name,
+             GVariant   *parameter)
+{
+  PalangEditor *editor = palang_window_get_active_editor (PALANG_WINDOW (widget));
+
+  if (editor != NULL)
+    palang_editor_show_search (editor, g_str_equal (action_name, "win.replace"));
+}
+
+static void
+find_next_action (GtkWidget  *widget,
+                  const char *action_name,
+                  GVariant   *parameter)
+{
+  PalangEditor *editor = palang_window_get_active_editor (PALANG_WINDOW (widget));
+
+  if (editor != NULL)
+    palang_editor_find_next (editor, g_str_equal (action_name, "win.find-next"));
+}
+
+static void
+go_to_line_action (GtkWidget  *widget,
+                   const char *action_name,
+                   GVariant   *parameter)
+{
+  PalangEditor *editor = palang_window_get_active_editor (PALANG_WINDOW (widget));
+
+  if (editor != NULL)
+    palang_editor_show_go_to (editor);
+}
+
 static void
 save_action (GtkWidget  *widget,
              const char *action_name,
@@ -864,6 +904,13 @@ palang_window_class_init (PalangWindowClass *klass)
   gtk_widget_class_install_action (widget_class, "win.save-as", NULL, save_as_action);
   gtk_widget_class_install_action (widget_class, "win.save-all", NULL, save_all_action);
   gtk_widget_class_install_action (widget_class, "win.close-tab", NULL, close_tab_action);
+  /* find_action and find_next_action serve two actions each and look at
+   * the action name to tell them apart. */
+  gtk_widget_class_install_action (widget_class, "win.find", NULL, find_action);
+  gtk_widget_class_install_action (widget_class, "win.replace", NULL, find_action);
+  gtk_widget_class_install_action (widget_class, "win.find-next", NULL, find_next_action);
+  gtk_widget_class_install_action (widget_class, "win.find-previous", NULL, find_next_action);
+  gtk_widget_class_install_action (widget_class, "win.go-to-line", NULL, go_to_line_action);
 }
 
 static void

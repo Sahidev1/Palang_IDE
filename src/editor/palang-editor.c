@@ -14,10 +14,13 @@ struct _PalangEditor
 {
   AdwBin parent_instance;
 
-  PalangDocument *document;  /* owned */
+  PalangDocument  *document;    /* owned */
+  PalangSearchBar *search_bar;  /* child widget, created in init */
 
-  /* Template child */
+  /* Template children */
   GtkSourceView *view;
+  GtkRevealer   *go_to_revealer;
+  GtkEntry      *go_to_entry;
 };
 
 G_DEFINE_FINAL_TYPE (PalangEditor, palang_editor, ADW_TYPE_BIN)
@@ -126,6 +129,153 @@ palang_editor_get_view (PalangEditor *self)
   g_return_val_if_fail (PALANG_IS_EDITOR (self), NULL);
 
   return self->view;
+}
+
+/* ---- Find / Replace ----------------------------------------------------- */
+
+PalangSearchBar *
+palang_editor_get_search_bar (PalangEditor *self)
+{
+  g_return_val_if_fail (PALANG_IS_EDITOR (self), NULL);
+
+  return self->search_bar;
+}
+
+void
+palang_editor_show_search (PalangEditor *self,
+                           gboolean      replace)
+{
+  g_return_if_fail (PALANG_IS_EDITOR (self));
+
+  gtk_revealer_set_reveal_child (self->go_to_revealer, FALSE);
+  palang_search_bar_open (self->search_bar, replace);
+}
+
+void
+palang_editor_find_next (PalangEditor *self,
+                         gboolean      forward)
+{
+  g_return_if_fail (PALANG_IS_EDITOR (self));
+
+  if (palang_search_bar_is_open (self->search_bar))
+    palang_search_bar_find (self->search_bar, forward);
+  else
+    palang_editor_show_search (self, FALSE);
+}
+
+/* ---- Go to line --------------------------------------------------------- */
+
+/* Parses "42" or "42:10" into 1-based line and column numbers. */
+static gboolean
+parse_go_to_spec (const char *spec,
+                  guint64    *line,
+                  guint64    *column)
+{
+  /* g_strstrip trims spaces in place, so work on a copy. */
+  g_autofree char *trimmed = g_strstrip (g_strdup (spec));
+  g_auto (GStrv) parts = g_strsplit (trimmed, ":", 2);
+
+  *line = 0;
+  *column = 1;
+
+  if (parts[0] == NULL ||
+      !g_ascii_string_to_unsigned (parts[0], 10, 1, G_MAXINT, line, NULL))
+    return FALSE;
+
+  if (parts[1] != NULL &&
+      !g_ascii_string_to_unsigned (parts[1], 10, 1, G_MAXINT, column, NULL))
+    return FALSE;
+
+  return TRUE;
+}
+
+gboolean
+palang_editor_go_to (PalangEditor *self,
+                     const char   *spec)
+{
+  GtkTextBuffer *buffer;
+  GtkTextIter iter, line_end;
+  guint64 line, column;
+
+  g_return_val_if_fail (PALANG_IS_EDITOR (self), FALSE);
+  g_return_val_if_fail (spec != NULL, FALSE);
+
+  if (!parse_go_to_spec (spec, &line, &column))
+    return FALSE;
+
+  buffer = GTK_TEXT_BUFFER (self->document);
+
+  /* Lines and offsets are 0-based in GtkTextBuffer. A line past the end
+   * goes to the last line. */
+  gtk_text_buffer_get_iter_at_line (buffer, &iter, (int) line - 1);
+
+  /* A column past the end of the line goes to the end of the line. */
+  line_end = iter;
+  if (!gtk_text_iter_ends_line (&line_end))
+    gtk_text_iter_forward_to_line_end (&line_end);
+  gtk_text_iter_set_line_offset (&iter, MIN ((int) column - 1,
+                                             gtk_text_iter_get_line_offset (&line_end)));
+
+  gtk_text_buffer_place_cursor (buffer, &iter);
+  gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (self->view),
+                                gtk_text_buffer_get_insert (buffer),
+                                0, TRUE, 0, 0.3);
+  return TRUE;
+}
+
+void
+palang_editor_show_go_to (PalangEditor *self)
+{
+  g_return_if_fail (PALANG_IS_EDITOR (self));
+
+  palang_search_bar_close (self->search_bar);
+  gtk_editable_set_text (GTK_EDITABLE (self->go_to_entry), "");
+  gtk_widget_remove_css_class (GTK_WIDGET (self->go_to_entry), "error");
+  gtk_revealer_set_reveal_child (self->go_to_revealer, TRUE);
+  gtk_widget_grab_focus (GTK_WIDGET (self->go_to_entry));
+}
+
+static void
+close_go_to (PalangEditor *self)
+{
+  gtk_revealer_set_reveal_child (self->go_to_revealer, FALSE);
+  gtk_widget_grab_focus (GTK_WIDGET (self->view));
+}
+
+/* Enter in the "go to line" box. */
+static void
+on_go_to_activate (GtkEntry     *entry,
+                   PalangEditor *self)
+{
+  if (palang_editor_go_to (self, gtk_editable_get_text (GTK_EDITABLE (entry))))
+    close_go_to (self);
+  else
+    gtk_widget_add_css_class (GTK_WIDGET (entry), "error");
+}
+
+static void
+on_go_to_close_clicked (GtkButton    *button,
+                        PalangEditor *self)
+{
+  close_go_to (self);
+}
+
+/* Esc: close whichever bar is open. Returning FALSE lets Esc continue to
+ * other handlers when there's nothing to close. */
+static gboolean
+escape_binding (GtkWidget *widget,
+                GVariant  *args,
+                gpointer   user_data)
+{
+  PalangEditor *self = PALANG_EDITOR (widget);
+
+  if (gtk_revealer_get_reveal_child (self->go_to_revealer))
+    {
+      close_go_to (self);
+      return TRUE;
+    }
+
+  return FALSE;
 }
 
 /* Clicking or tabbing into the editor focuses the text view. */
@@ -246,12 +396,26 @@ palang_editor_class_init (PalangEditorClass *klass)
   gtk_widget_class_set_template_from_resource (widget_class,
                                                RESOURCE_PATH "/ui/palang-editor.ui");
   gtk_widget_class_bind_template_child (widget_class, PalangEditor, view);
+  gtk_widget_class_bind_template_child (widget_class, PalangEditor, go_to_revealer);
+  gtk_widget_class_bind_template_child (widget_class, PalangEditor, go_to_entry);
+  gtk_widget_class_bind_template_callback (widget_class, on_go_to_activate);
+  gtk_widget_class_bind_template_callback (widget_class, on_go_to_close_clicked);
+
+  gtk_widget_class_add_binding (widget_class, GDK_KEY_Escape, 0, escape_binding, NULL);
 }
 
 static void
 palang_editor_init (PalangEditor *self)
 {
+  /* The template's top-level box is the AdwBin's child (not bound as a
+   * template child, so it isn't freed twice on dispose). */
+  GtkWidget *box;
+
   gtk_widget_init_template (GTK_WIDGET (self));
+
+  box = adw_bin_get_child (ADW_BIN (self));
+  self->search_bar = palang_search_bar_new (self->view);
+  gtk_box_prepend (GTK_BOX (box), GTK_WIDGET (self->search_bar));
 }
 
 PalangEditor *

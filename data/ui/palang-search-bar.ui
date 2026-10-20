@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Find / Replace bar. Behaviour lives in src/editor/palang-search-bar.c. -->
+<interface>
+  <template class="PalangSearchBar" parent="AdwBin">
+    <property name="child">
+      <object class="GtkRevealer" id="revealer">
+        <property name="transition-type">slide-down</property>
+        <property name="child">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <style>
+              <class name="toolbar"/>
+            </style>
+
+            <!-- Row 1: search text, match count, options, navigation. -->
+            <child>
+            <object class="GtkBox">
+              <property name="spacing">6</property>
+              <child>
+                <object class="GtkSearchEntry" id="search_entry">
+                  <property name="hexpand">true</property>
+                  <property name="placeholder-text">Find</property>
+                  <signal name="changed" handler="on_search_entry_changed"/>
+                  <signal name="activate" handler="on_search_entry_activate"/>
+                  <signal name="stop-search" handler="on_stop_search"/>
+                </object>
+              </child>
+              <child>
+                <object class="GtkLabel" id="status_label">
+                  <property name="width-chars">10</property>
+                  <style>
+                    <class name="dim-label"/>
+                    <class name="numeric"/>
+                  </style>
+                </object>
+              </child>
+              <child>
+                <object class="GtkToggleButton" id="case_button">
+                  <property name="label">Aa</property>
+                  <property name="tooltip-text">Match Case</property>
+                  <style>
+                    <class name="flat"/>
+                  </style>
+                </object>
+              </child>
+              <child>
+                <object class="GtkToggleButton" id="word_button">
+                  <property name="label">W</property>
+                  <property name="tooltip-text">Match Whole Words</property>
+                  <style>
+                    <class name="flat"/>
+                  </style>
+                </object>
+              </child>
+              <child>
+                <object class="GtkToggleButton" id="regex_button">
+                  <property name="label">.*</property>
+                  <property name="tooltip-text">Use Regular Expression</property>
+                  <style>
+                    <class name="flat"/>
+                  </style>
+                </object>
+              </child>
+              <child>
+                <object class="GtkButton">
+                  <property name="icon-name">go-up-symbolic</property>
+                  <property name="tooltip-text">Previous Match (Shift+F3)</property>
+                  <signal name="clicked" handler="on_previous_clicked"/>
+                  <style>
+                    <class name="flat"/>
+                  </style>
+                </object>
+              </child>
+              <child>
+                <object class="GtkButton">
+                  <property name="icon-name">go-down-symbolic</property>
+                  <property name="tooltip-text">Next Match (F3)</property>
+                  <signal name="clicked" handler="on_next_clicked"/>
+                  <style>
+                    <class name="flat"/>
+                  </style>
+                </object>
+              </child>
+              <child>
+                <object class="GtkToggleButton" id="replace_toggle">
+                  <property name="icon-name">edit-find-replace-symbolic</property>
+                  <property name="tooltip-text">Replace (Ctrl+H)</property>
+                  <style>
+                    <class name="flat"/>
+                  </style>
+                </object>
+              </child>
+              <child>
+                <object class="GtkButton">
+                  <property name="icon-name">window-close-symbolic</property>
+                  <property name="tooltip-text">Close (Esc)</property>
+                  <signal name="clicked" handler="on_close_clicked"/>
+                  <style>
+                    <class name="flat"/>
+                  </style>
+                </object>
+              </child>
+            </object>
+            </child>
+
+            <!-- Row 2: replacement text (shown when replace_toggle is on). -->
+            <child>
+            <object class="GtkRevealer">
+              <property name="reveal-child" bind-source="replace_toggle" bind-property="active" bind-flags="sync-create"/>
+              <property name="child">
+                <object class="GtkBox">
+                  <property name="spacing">6</property>
+                  <child>
+                    <object class="GtkEntry" id="replace_entry">
+                      <property name="hexpand">true</property>
+                      <property name="placeholder-text">Replace</property>
+                      <signal name="activate" handler="on_replace_clicked"/>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="GtkButton">
+                      <property name="label">_Replace</property>
+                      <property name="use-underline">true</property>
+                      <signal name="clicked" handler="on_replace_clicked"/>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="GtkButton">
+                      <property name="label">Replace _All</property>
+                      <property name="use-underline">true</property>
+                      <signal name="clicked" handler="on_replace_all_clicked"/>
+                    </object>
+                  </child>
+                </object>
+              </property>
+            </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

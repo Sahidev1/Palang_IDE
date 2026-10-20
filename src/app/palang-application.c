@@ -63,6 +63,11 @@ static const struct {
   { "win.save-as",   { "<Control><Shift>s", NULL } },
   { "win.save-all",  { "<Control><Alt>s", NULL } },
   { "win.close-tab", { "<Control>w", NULL } },
+  { "win.find",      { "<Control>f", NULL } },
+  { "win.replace",   { "<Control>h", NULL } },
+  { "win.find-next", { "F3", NULL } },
+  { "win.find-previous", { "<Shift>F3", NULL } },
+  { "win.go-to-line", { "<Control>g", NULL } },
 };
 
 /* Returns: (transfer none): the existing window, or a new one. */
