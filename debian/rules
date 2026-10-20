@@ -1,9 +1,13 @@
 #!/usr/bin/make -f
-# Builds Palang with Meson as a release build (no sanitizers) and runs the
-# test suite; the UI tests use a virtual display (xvfb-run).
+# Builds Palang with Meson and runs the test suite (the UI tests use a
+# virtual display via xvfb-run).
+#
+# debhelper configures Meson with --buildtype=plain and passes Debian's own
+# optimization and hardening flags; we only turn off the sanitizers, which
+# are for development builds.
 
 %:
 	dh $@ --buildsystem=meson
 
 override_dh_auto_configure:
-	dh_auto_configure -- -Dbuildtype=release -Db_sanitize=none
+	dh_auto_configure -- -Db_sanitize=none
