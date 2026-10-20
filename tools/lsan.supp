@@ -11,3 +11,11 @@ leak:libfontconfig.so
 # GTK's IBus input-method module leaks IBusText objects while handling focus
 # and key events (found in Phase 0 manual test 3).
 leak:libim-ibus.so
+
+# GtkSourceView's file loader leaks one small block (about the size of the
+# text) when it converts a non-UTF-8 file (e.g. Latin-1) to UTF-8. It's
+# allocated by its internal buffer output stream, inside g_output_stream_write.
+# Matching that frame (not all of libgtksourceview) keeps leaks caused by our
+# own use of GtkSourceView objects visible. Found by
+# tests/test-document.c (save-keeps-encoding).
+leak:g_output_stream_write

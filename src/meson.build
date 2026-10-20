@@ -1,11 +1,12 @@
 palang_deps = [gtk_dep, adw_dep, gtksource_dep]
-palang_inc  = include_directories('app')
+palang_inc  = include_directories('app', 'editor')
 
 # Everything except main.c lives in a static library, so unit tests can link
 # against the same code the app uses.
 libpalang = static_library('palang',
   'app/palang-application.c',
   'app/palang-window.c',
+  'editor/palang-document.c',
   dependencies: palang_deps,
   include_directories: [config_inc, palang_inc],
 )
