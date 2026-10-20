@@ -13,7 +13,10 @@
 
 #include <gtksourceview/gtksource.h>
 
+#include "palang-appearance.h"
 #include "palang-application.h"
+#include "palang-preferences-dialog.h"
+#include "palang-settings.h"
 #include "palang-window.h"
 
 struct _PalangApplication
@@ -44,8 +47,21 @@ palang_application_quit_action (GSimpleAction *action,
     gtk_window_close (GTK_WINDOW (l->data));
 }
 
+/* "app.preferences": show the Preferences window over the current window. */
+static void
+palang_application_preferences_action (GSimpleAction *action,
+                                       GVariant      *parameter,
+                                       gpointer       user_data)
+{
+  GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (user_data));
+
+  adw_dialog_present (palang_preferences_dialog_new (palang_settings_get_default ()),
+                      GTK_WIDGET (window));
+}
+
 static const GActionEntry app_actions[] = {
   { .name = "quit", .activate = palang_application_quit_action },
+  { .name = "preferences", .activate = palang_application_preferences_action },
 };
 
 /* Keyboard shortcuts: action name → accelerators. "win." actions are
@@ -55,6 +71,7 @@ static const struct {
   const char *accels[2];
 } shortcuts[] = {
   { "app.quit",      { "<Control>q", NULL } },
+  { "app.preferences", { "<Control>comma", NULL } },
   { "win.new",       { "<Control>n", NULL } },
   { "win.open",      { "<Control>o", NULL } },
   { "win.open-folder", { "<Control><Shift>o", NULL } },
@@ -91,6 +108,9 @@ palang_application_startup (GApplication *app)
 
   /* Registers GtkSourceView's types and loads its languages and themes. */
   gtk_source_init ();
+
+  /* Light/dark and the editor font follow the user's settings. */
+  palang_appearance_follow (palang_settings_get_default ());
 
   g_action_map_add_action_entries (G_ACTION_MAP (app),
                                    app_actions, G_N_ELEMENTS (app_actions),

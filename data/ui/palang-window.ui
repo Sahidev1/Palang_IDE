@@ -50,6 +50,10 @@
         <attribute name="action">win.close-tab</attribute>
       </item>
       <item>
+        <attribute name="label">_Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+      <item>
         <attribute name="label">_Quit</attribute>
         <attribute name="action">app.quit</attribute>
       </item>

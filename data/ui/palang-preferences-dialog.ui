@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Preferences window. Behaviour lives in src/app/palang-preferences-dialog.c,
+     which connects each row to its setting. -->
+<interface>
+  <template class="PalangPreferencesDialog" parent="AdwPreferencesDialog">
+    <property name="title">Preferences</property>
+    <child>
+      <object class="AdwPreferencesPage">
+        <property name="title">Editor</property>
+        <property name="icon-name">text-editor-symbolic</property>
+
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title">Appearance</property>
+            <child>
+              <object class="AdwComboRow" id="color_scheme_row">
+                <property name="title">Style</property>
+                <property name="model">
+                  <object class="GtkStringList">
+                    <items>
+                      <!-- Order matches the values "system", "light", "dark". -->
+                      <item>Follow System</item>
+                      <item>Light</item>
+                      <item>Dark</item>
+                    </items>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="system_font_row">
+                <property name="title">Use System Monospace Font</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwActionRow" id="font_row">
+                <property name="title">Font</property>
+                <child type="suffix">
+                  <object class="GtkFontDialogButton" id="font_button">
+                    <property name="valign">center</property>
+                    <property name="dialog">
+                      <object class="GtkFontDialog">
+                        <property name="title">Editor Font</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="line_numbers_row">
+                <property name="title">Show Line Numbers</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="current_line_row">
+                <property name="title">Highlight Current Line</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="wrap_lines_row">
+                <property name="title">Wrap Long Lines</property>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title">Indentation</property>
+            <child>
+              <object class="AdwSpinRow" id="tab_width_row">
+                <property name="title">Tab Width</property>
+                <property name="subtitle">Also used as the indentation width</property>
+                <property name="adjustment">
+                  <object class="GtkAdjustment">
+                    <property name="lower">1</property>
+                    <property name="upper">16</property>
+                    <property name="step-increment">1</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="insert_spaces_row">
+                <property name="title">Insert Spaces Instead of Tabs</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

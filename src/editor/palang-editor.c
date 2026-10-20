@@ -9,6 +9,7 @@
 #include "config.h"
 
 #include "palang-editor.h"
+#include "palang-settings.h"
 
 struct _PalangEditor
 {
@@ -43,7 +44,8 @@ update_style_scheme (PalangEditor *self)
   const char *scheme_id;
 
   /* "Adwaita" and "Adwaita-dark" ship with GtkSourceView 5 and match the
-   * libadwaita look. (Phase 1.5 replaces this with a user setting.) */
+   * libadwaita look. Whether we're dark is decided by the "Style" setting
+   * (see palang-appearance.c). */
   scheme_id = adw_style_manager_get_dark (style_manager) ? "Adwaita-dark" : "Adwaita";
 
   gtk_source_buffer_set_style_scheme (GTK_SOURCE_BUFFER (self->document),
@@ -285,6 +287,37 @@ palang_editor_grab_focus (GtkWidget *widget)
   return gtk_widget_grab_focus (GTK_WIDGET (PALANG_EDITOR (widget)->view));
 }
 
+/* Settings → view: wrap-lines (a boolean) becomes a GtkWrapMode. */
+static gboolean
+wrap_lines_to_wrap_mode (GBinding     *binding,
+                         const GValue *from_value,
+                         GValue       *to_value,
+                         gpointer      user_data)
+{
+  g_value_set_enum (to_value, g_value_get_boolean (from_value) ? GTK_WRAP_WORD_CHAR : GTK_WRAP_NONE);
+  return TRUE;
+}
+
+/* Makes the view follow the user's settings, now and when they change. */
+static void
+bind_settings (PalangEditor *self)
+{
+  PalangSettings *settings = palang_settings_get_default ();
+
+  g_object_bind_property (settings, "show-line-numbers", self->view, "show-line-numbers",
+                          G_BINDING_SYNC_CREATE);
+  g_object_bind_property (settings, "highlight-current-line", self->view, "highlight-current-line",
+                          G_BINDING_SYNC_CREATE);
+  /* The view's indent-width is -1 by default, meaning "same as tab-width". */
+  g_object_bind_property (settings, "tab-width", self->view, "tab-width",
+                          G_BINDING_SYNC_CREATE);
+  g_object_bind_property (settings, "insert-spaces", self->view, "insert-spaces-instead-of-tabs",
+                          G_BINDING_SYNC_CREATE);
+  g_object_bind_property_full (settings, "wrap-lines", self->view, "wrap-mode",
+                               G_BINDING_SYNC_CREATE,
+                               wrap_lines_to_wrap_mode, NULL, NULL, NULL);
+}
+
 static void
 palang_editor_constructed (GObject *object)
 {
@@ -303,6 +336,8 @@ palang_editor_constructed (GObject *object)
   update_style_scheme (self);
   g_signal_connect_object (adw_style_manager_get_default (), "notify::dark",
                            G_CALLBACK (on_dark_changed), self, 0);
+
+  bind_settings (self);
 }
 
 static void

@@ -39,11 +39,23 @@ configure_file(output: 'config.h', configuration: conf)
 config_inc = include_directories('.')
 
 # Environment for running Palang and its tests under the sanitizers.
+lsan_options = 'suppressions=' + meson.project_source_root() / 'tools' / 'lsan.supp'
+
 sanitizer_env = environment()
-sanitizer_env.set('LSAN_OPTIONS',
-  'suppressions=' + meson.project_source_root() / 'tools' / 'lsan.supp',
-  'print_suppressions=0')
+sanitizer_env.set('LSAN_OPTIONS', lsan_options, 'print_suppressions=0')
 sanitizer_env.set('UBSAN_OPTIONS', 'print_stacktrace=1', 'halt_on_error=1')
+
+# Tests additionally get their own config/data folders inside the build
+# directory, so they never read or change the user's real Palang settings
+# or session. (A separate environment(), so `ninja run` isn't affected.)
+test_home = meson.project_build_root() / 'test-home'
+test_env = environment()
+test_env.set('LSAN_OPTIONS', lsan_options, 'print_suppressions=0')
+test_env.set('UBSAN_OPTIONS', 'print_stacktrace=1', 'halt_on_error=1')
+test_env.set('XDG_CONFIG_HOME', test_home / 'config')
+test_env.set('XDG_DATA_HOME', test_home / 'data')
+test_env.set('XDG_STATE_HOME', test_home / 'state')
+test_env.set('XDG_CACHE_HOME', test_home / 'cache')
 
 subdir('data')
 subdir('src')
