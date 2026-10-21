@@ -6,7 +6,7 @@ libadwaita and GtkSourceView 5. See [PLAN.md](PLAN.md) for the roadmap,
 [PROGRESS.md](PROGRESS.md) for what's done, and [docs/](docs/) for how the
 code works.
 
-## Features (Phase 1)
+## Features
 
 - Tabs, syntax highlighting for 150+ languages, line numbers
 - Folder tree sidebar that follows changes on disk
@@ -14,6 +14,9 @@ code works.
 - Light / dark style (also on desktops like MATE), font and indentation settings
 - Prompts before losing unsaved work; reloads files changed by other programs
 - Restores the open folder and files on the next start
+- Integrated terminal; in it, `palang set NAME VALUE` changes settings
+  (`palang help` lists the commands)
+- Project-wide search (needs ripgrep), command palette, Quick Open
 
 ## Keyboard shortcuts
 
@@ -26,6 +29,10 @@ code works.
 | Next / previous match | F3 / Shift+F3 |
 | Go to line | Ctrl+G |
 | Show / hide folder sidebar | F9 |
+| Show / hide terminal and search panel | Ctrl+J |
+| Search in the folder | Ctrl+Shift+F |
+| Command palette / Open file in folder | Ctrl+Shift+P / Ctrl+P |
+| Copy / paste in the terminal | Ctrl+Shift+C / Ctrl+Shift+V |
 | Preferences | Ctrl+, |
 
 ## Build and run
@@ -35,6 +42,7 @@ Dependencies (Debian / Ubuntu / Linux Mint):
 ```sh
 sudo apt install build-essential meson ninja-build pkg-config \
   libgtk-4-dev libgtksourceview-5-dev libadwaita-1-dev \
+  libvte-2.91-gtk4-dev libjson-glib-dev ripgrep \
   xvfb xauth desktop-file-utils
 ```
 

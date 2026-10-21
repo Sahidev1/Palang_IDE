@@ -55,7 +55,7 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
   2.80, meson 1.3.2. Also installed for later phases: VTE (GTK4), libsoup 3,
   json-glib, jsonrpc-glib, libsecret, debhelper.
 - Installed tools: `xvfb` / `xvfb-run`, `xdotool`, `wmctrl`, ImageMagick
-  `import`, `gdb`, `valgrind`, `desktop-file-validate`.
+  `import`, `gdb`, `valgrind`, `desktop-file-validate`, `ripgrep` (`rg`).
 - Project path: `/home/ali/Documents/projects/agentic_projects/Palang_IDE`
   (git repo, branch `main`, no remote). App ID: `io.github.sahidev1.Palang`.
 
@@ -65,15 +65,16 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 meson setup build                 # debug + ASan/UBSan + -Werror by default
 ninja -C build
 ninja -C build run                # runs with the LSan suppressions
-meson test -C build               # 9 programs, 58 cases; UI tests via xvfb-run
+meson test -C build               # 13 programs, 91 cases; UI tests via xvfb-run
 tools/build-deb.sh                # .deb of the last *commit* into build-deb/
 ```
 
 - Running `./build/src/palang` directly prints harmless fontconfig/IBus
   leak reports at exit; use `ninja run` or set
   `LSAN_OPTIONS=suppressions=$PWD/tools/lsan.supp`.
-- `tools/lsan.supp` suppresses only: fontconfig, GTK's IBus module, and
-  `g_output_stream_write` (a GtkSourceView encoding-conversion leak). Keep
+- `tools/lsan.supp` suppresses only: fontconfig, GTK's IBus module,
+  `g_output_stream_write` (a GtkSourceView encoding-conversion leak) and
+  `gdk_content_formats_builder_new` (VTE leaks one per copy/selection). Keep
   suppressions narrow; it was verified that our own leaks are still caught
   (deliberately break a `g_clear_object`, see the test fail, restore).
 - Tests get isolated `XDG_CONFIG/DATA/STATE/CACHE_HOME` in
@@ -101,6 +102,10 @@ xdotool key ctrl+q                                   # quit; check exit code 0
   dropdowns with the keyboard.
 - Screenshot only the Palang window: the desktop shows sahi's other apps.
   Delete screenshots afterwards.
+- For anything touching the clipboard or many keys, run the whole session
+  on a separate virtual display instead: `xvfb-run -a -s "-screen 0
+  1100x800x24" bash script.sh`, with `xdotool search --onlyvisible --name
+  Palang` (there is no window manager there, so skip `windowactivate`).
 - Never modify the repo's real files from outside to test a feature.
 
 ## Status
@@ -109,11 +114,12 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 |---|---|
 | 0 Setup | ✅ |
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
-| 2a Terminal, `palang` command, project search, palette + Quick Open | planned with sahi, ready to code (`docs/plan/phase-2.md`) |
-| 2b LSP client | after 2a |
+| 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests (`MANUAL_TESTS.md`, Phase 2a) waiting for sahi |
+| 2b LSP client | next (`docs/plan/phase-2.md`); needs `clangd` installed |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
-Open items: **no license chosen** (`debian/copyright` says TBD), the icon
+Open items: `palang-window.c` is ~1600 lines, split it before adding LSP
+wiring (PROGRESS.md, Phase 2a); **no license chosen** (`debian/copyright` says TBD), the icon
 (`data/icons/…svg`) is a placeholder, Follow System doesn't switch on MATE
 (low priority, cause unknown), and the open decisions in PLAN.md §5
 (shortcut prefix `_` vs `\`, math rendering engine, default AI provider,
@@ -156,6 +162,20 @@ the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
     third-party product. Claude Code (the user's own `claude` CLI) is fine
     for agentic features and math translation (`docs/plan/`:
     phase-3-autocomplete §4, phase-4-5-math §6, phase-6-agentic).
+11. **GTK4 runs application shortcuts before the focused widget.** A
+    widget that needs Ctrl+letter keys (the terminal) only gets them
+    because a window key controller added in `palang_window_init` forwards
+    them first (`commands_kept_in_terminal[]`).
+12. **GApplication command lines:** the caller's environment reaches the
+    running instance only with `G_APPLICATION_SEND_ENVIRONMENT`.
+13. **Layout timing:** a text view created a moment ago can't scroll to a
+    line yet, and a newly shown `GtkPaned` child gets its *minimum* size.
+    Retry or apply on a tick callback (`gtk_widget_add_tick_callback`)
+    once the widget has a size.
+14. **GTK 4.14 list section headers:** the first header stays scrolled out
+    of view when rows arrive; we show headings inside rows instead.
+15. **VTE emits `child-exited` while being destroyed:** disconnect from it
+    in `dispose`.
 
 ## Memory
 
@@ -166,6 +186,7 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Implement Phase 2a, step by step, as planned and decided with sahi in
-`docs/plan/phase-2.md` (steps 2a.1–2a.6, one commit each). Phase 2b (LSP)
-is a separate session; it needs `clangd` installed first.
+First read sahi's Phase 2a manual test results in `MANUAL_TESTS.md` and
+investigate failures. Then Phase 2b (LSP client), planned in
+`docs/plan/phase-2.md`; discuss the design with sahi before coding. It
+needs `sudo apt install clangd` (sahi runs it).

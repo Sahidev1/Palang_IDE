@@ -60,8 +60,8 @@ Each phase's design lives in `docs/plan/`; a session reads only its own.
 |---|---|---|---|---|
 | 0 | Project setup, first window | [phase-0-1](docs/plan/phase-0-1.md) | — | ✅ |
 | 1 | Usable editor: tabs, file tree, find, settings, session, `.deb` | [phase-0-1](docs/plan/phase-0-1.md) | — | ✅ |
-| 2a | Terminal, `palang` settings command, project search, command palette + Quick Open | [phase-2](docs/plan/phase-2.md) | 1 | next |
-| 2b | LSP client | [phase-2](docs/plan/phase-2.md) | 1 | |
+| 2a | Terminal, `palang` settings command, project search, command palette + Quick Open | [phase-2](docs/plan/phase-2.md) | 1 | ✅ |
+| 2b | LSP client | [phase-2](docs/plan/phase-2.md) | 1 | next |
 | 3 | AI autocomplete (ghost text) | [phase-3-autocomplete](docs/plan/phase-3-autocomplete.md) | 1 | |
 | 4 | Math symbols: shortcuts + palette | [phase-4-5-math](docs/plan/phase-4-5-math.md) §1–2 | 1, or bundled with the start of 5 | |
 | 5 | Inline math rendering + hidden generated code | [phase-4-5-math](docs/plan/phase-4-5-math.md) §3–7 | 1–2 | |

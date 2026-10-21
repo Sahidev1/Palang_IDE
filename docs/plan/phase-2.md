@@ -100,7 +100,8 @@ $ palang reset tab-width          # back to the default
 - **ripgrep is required (decided):** a `.deb` dependency; no fallback file
   walker. If `rg` is missing (a source build), the search page says so.
 - UI in the panel: search box with case / whole word / regex options;
-  results grouped by file (GTK list section headers); activating a result
+  results grouped by file (built: the path above each file's first match,
+  since GTK 4.14 section headers hid the first one; see PROGRESS.md); activating a result
   opens the file at its line and column (`palang_window_open_file ()` +
   `palang_editor_go_to ()`). Ctrl+Shift+F opens it with the selection.
 - A new search cancels the running one; results are capped (about 5000) so

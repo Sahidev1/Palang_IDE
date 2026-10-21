@@ -99,6 +99,75 @@ unless a test says otherwise.
 
 ---
 
+## Phase 2a
+
+Terminal, the `palang` command, project search, command palette and Quick
+Open. These need real key presses and your real desktop. Run Palang with
+`ninja -C build run` from the project folder, and open the project folder
+in it (Ctrl+Shift+O) unless a test says otherwise.
+
+### 1. Bottom panel
+- [ ] Ctrl+J shows the panel under the tabs with the Terminal page; Ctrl+J
+      again hides it and the cursor is back in the text. The × in the
+      panel and the terminal button in the header bar do the same.
+- [ ] Drag the divider to make the panel taller, hide and show it: same
+      height. Quit and start again: the panel is shown (or not) as you left
+      it, at that height, on the same page.
+
+### 2. Terminal
+- [ ] The prompt is in the project folder (`pwd`), with your usual shell
+      and prompt.
+- [ ] Keys go to the shell: type `echo one two`, press **Ctrl+W** → only
+      `two` is deleted, no tab closes. **Ctrl+R** searches the history,
+      **Ctrl+C** stops `sleep 100`, **Ctrl+L** clears.
+- [ ] These still work from the terminal: Ctrl+J, F9, Ctrl+Shift+F,
+      Ctrl+Shift+P, Ctrl+P, Ctrl+, and Ctrl+Q.
+- [ ] Select text with the mouse, Ctrl+Shift+C, then Ctrl+Shift+V pastes
+      it. Text copied in another program pastes with Ctrl+Shift+V.
+- [ ] `exit` → "Process exited — press Enter to restart"; Enter gives a new
+      prompt.
+- [ ] Preferences → change the font or the style: the terminal follows.
+- [ ] Run `htop` or `mc` (if installed): colours and mouse look right;
+      `vim` works.
+
+### 3. The `palang` command
+- [ ] In the Palang terminal: `palang help`, `palang settings`,
+      `palang get tab-width`.
+- [ ] `palang set tab-width 2`: open editors use 2 from now on, and
+      Preferences shows 2. `palang reset tab-width` → back to 4.
+- [ ] `palang set color-scheme purple; echo $?` → an error listing
+      system, light, dark, and `1`.
+- [ ] `palang set color-scheme light` → the window turns light at once.
+- [ ] `palang README.md` opens the file in a tab; `palang ./set` would open
+      a file called `set`.
+- [ ] In a terminal *outside* Palang (with Palang running),
+      `./build/src/palang settings` doesn't list settings: Palang tries to
+      open a file called `settings` ("Could not open file" if there's none).
+- [ ] After installing the `.deb` (Phase 1 test 1): in the Palang terminal,
+      `palang set <Tab><Tab>` lists the setting names and
+      `palang set color-scheme <Tab><Tab>` lists system, light, dark.
+
+### 4. Project search
+- [ ] Select a word in an editor, Ctrl+Shift+F: the Search page opens
+      searching for it. Results are grouped under file paths, with the
+      matches in bold.
+- [ ] Click a result: its file opens (or its tab is selected) with the
+      cursor on that line, scrolled into view.
+- [ ] Try Aa, W and .*; an invalid regex like `foo(` with .* on shows an
+      error message instead of results.
+- [ ] Search for something very common (`e`): it stops at 5000 results and
+      says so; the window stays responsive while it searches.
+- [ ] Files ignored by `.gitignore` (e.g. under `build/`) aren't searched.
+
+### 5. Command palette and Quick Open
+- [ ] Ctrl+Shift+P: every command with its shortcut. Type `sva` → Save All
+      on top; Up/Down move the highlight; Enter runs it; Escape closes.
+- [ ] Ctrl+P: type `appwin` → palang-window.c and .h (src/app); Enter
+      opens the highlighted one. A click opens one too.
+- [ ] Ctrl+P with no folder open shows "Open a folder first".
+
+---
+
 ## Results notes
 
 

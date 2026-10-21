@@ -4,6 +4,92 @@ Newest phase at the top. See [PLAN.md](PLAN.md) for the roadmap.
 
 ---
 
+## Phase 2a — Terminal, `palang` command, search, palette ✅ (2026-10-21)
+
+Palang now has a bottom panel with a terminal and project-wide search, a
+`palang` command to change settings from that terminal, a command palette
+(Ctrl+Shift+P) and Quick Open (Ctrl+P).
+
+### What was built (one commit per step)
+| Step | Commit | What |
+|---|---|---|
+| 2a.1 | `d3cbe71` | Bottom panel (Ctrl+J, height and page in the session), `active-editor` property, the command table |
+| 2a.2 | `b0679c8` | Terminal (VTE): shell in the project folder, restart on Enter, Ctrl+Shift+C/V, follows style and font; keys go to the shell |
+| 2a.3 | `397b8f1` | `palang help/settings/get/set/reset` in the Palang terminal, settings by name in `settings/`, bash completion |
+| 2a.4 | `5128b0f` | Project search with ripgrep (Ctrl+Shift+F), open a result at its line |
+| 2a.5 | `19b0756` | Command palette and Quick Open, fuzzy matching |
+
+### Verification
+- **Tests:** 13 test programs, 91 test cases, plus the desktop-file check
+  (Phase 1: 9 programs, 58 cases). New: command-line, search, fuzzy,
+  terminal, palette. All pass under ASan/UBSan, repeatedly, and again in
+  the optimized, hardened Debian build (`tools/build-deb.sh`).
+- **Real app**, driven with xdotool (on Xvfb when the clipboard or
+  settings were involved, so your desktop wasn't touched), checked with
+  screenshots: panel toggle and height across restarts; terminal prompt in
+  the folder, `PALANG_TERMINAL`, `which palang` → `build/src/palang`,
+  Ctrl+W deleting a word, exit and restart, copy and paste, light style and
+  font; `palang get/set` with errors and exit status, a live switch to
+  light; search with grouped results, an invalid regex message, opening a
+  result at its line; the palette running Toggle Panel; Quick Open opening
+  a file. Every run exited with code 0 and no sanitizer reports.
+- **valgrind** (build without sanitizers, the same steps): no invalid
+  reads or writes; the 17 "definitely lost" records are all allocated
+  inside fontconfig (16) and GIO's module loading at startup (1).
+- **Package:** builds; depends on VTE, json-glib and ripgrep; installs the
+  bash completion.
+
+### Bugs found and fixed on the way
+- **Ctrl+W in the terminal closed an editor tab.** GTK4 runs the app's
+  shortcuts before the focused widget. A window key controller now hands
+  keys to the terminal first; only a few commands keep their shortcuts
+  there (see docs/02).
+- **Use-after-free when closing** (ASan): VTE reports the shell's exit
+  while being destroyed. The terminal disconnects first.
+- **`palang set …` opened files instead:** GApplication sends the caller's
+  environment only with `G_APPLICATION_SEND_ENVIRONMENT`.
+- **Go to line in a new tab didn't scroll** (a Phase 1 bug, found by the
+  search's "open at line"): `palang_editor_go_to ()` now keeps scrolling
+  on each frame until the cursor is visible.
+- **The panel lost a pixel per hide/show,** and opened at its minimum
+  height: its height is now measured from the divider.
+- **Fuzzy matching missed better matches** ("pan" → the "pa" of
+  "palang-"): it now tries every start.
+
+### Changes to the plan
+- **Search results show the file path above each file's first match**
+  instead of GTK list section headers: in GTK 4.14 the first header stayed
+  scrolled out of view.
+- **rg runs with `--sort path`** (one thread) so results and the 5000 cut
+  are the same every time.
+- **Keys in the terminal** (not in the plan): the shell gets them all
+  except Ctrl+J, F9, Ctrl+Shift+F, Ctrl+Shift+P, **Ctrl+P**, Ctrl+, and
+  Ctrl+Q. Ctrl+P is bash's "previous command" (Up does the same); VS Code
+  takes it for Quick Open too. Easy to change: `commands_kept_in_terminal[]`.
+- **New public API used by later phases:** `palang_window_open_file_at ()`
+  (LSP go-to-definition), `PalangPanel` pages (a diagnostics list), the
+  reusable `PalangPalette` (math symbols, Phase 4).
+- **lsan.supp:** VTE 0.76 leaks a small block on every copy/selection
+  (matched on `gdk_content_formats_builder_new`).
+
+### Open items
+- **`palang-window.c` is ~1600 lines.** Move the panel pages, key routing
+  and palette actions into their own file before 2b adds LSP wiring
+  (ARCHITECTURE.md rule 4).
+- Bash completion only loads from the installed package (in development:
+  `source data/palang.bash-completion`).
+- Still open from Phase 1: license, icon, Follow System on MATE.
+
+### Where to start reading
+1. `docs/02-how-phase-2a-works.md`.
+2. `src/search/palang-search.c` (the async subprocess pattern), then the
+   "Bottom panel" and terminal sections of `src/app/palang-window.c`.
+
+### Next
+Phase 2b: the LSP client (needs `sudo apt install clangd` first).
+
+---
+
 ## Phase 1 — A usable editor ✅ (2026-10-20)
 
 Palang is now a working editor: tabs, a folder tree, find and replace,
