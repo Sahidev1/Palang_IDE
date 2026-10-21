@@ -175,6 +175,54 @@ in it (Ctrl+Shift+O) unless a test says otherwise.
 
 ---
 
+## Phase 2b
+
+Language servers. Run Palang with `ninja -C build run` from the project
+folder and open the project folder in it (Ctrl+Shift+O). Needs clangd,
+pylsp with pyflakes, and typescript-language-server with TypeScript 5
+(see PROGRESS.md, Phase 2b, "Changes to the plan"). For the Python and
+JavaScript tests, make small files in a scratch folder outside the
+project, e.g. `/tmp/lsp-test/`.
+
+### 1. C with clangd (Palang's own code)
+- [ ] Open `src/main.c`, then type `int x = y;` on a new line inside
+      `main`. After a moment `y` gets a red wavy underline and the line a
+      gutter icon. Delete the line: they go away.
+- [ ] Rest the mouse pointer on the underlined `y`: a popup says
+      "Error: Use of undeclared identifier 'y' (clang)". It looks like a
+      normal popup (no black box around it).
+- [ ] Put the cursor on `palang_application_new` and press **F12**:
+      `palang-application.c` opens at its definition, scrolled so you
+      can see it.
+- [ ] **Ctrl+click** `g_application_run`: GLib's `gapplication.h` opens at
+      its declaration. A plain click (no Ctrl) just moves the cursor.
+- [ ] Ctrl+Shift+P → "Go to Definition" does the same as F12.
+
+### 2. Python and JavaScript
+- [ ] A `.py` file with `import os` and `z = undefined_name`: an orange
+      underline under the unused import, a red one under
+      `undefined_name`.
+- [ ] A `.js` file with `return x +;` inside a function: a red underline
+      at the `;`.
+- [ ] In the `.py` file, define `def f(): pass` and call `f()` further
+      down; F12 on the call jumps to the definition.
+
+### 3. Servers missing or broken
+- [ ] In the Palang terminal: `palang set python-server pylsp-missing`.
+      Open (or reopen) a `.py` file: a toast says the server “pylsp-missing”
+      wasn't found. **Details** shows the whole message; the text can be
+      selected and copied. `palang reset python-server`, then Ctrl+Shift+P
+      → "Restart Language Servers": the diagnostics come back.
+- [ ] Start Palang from the **desktop menu** (or a `.desktop` launcher),
+      not a terminal, and open a `.js` file. Does the JavaScript server
+      start (diagnostics appear), or does a toast say it wasn't found?
+      (nvm puts Node only on the terminal's `PATH`; write down which.)
+
+### 4. Quitting
+- [ ] With C, Python and JavaScript files open, quit with Ctrl+Q: Palang
+      closes within about two seconds, and `pgrep -a 'clangd|pylsp|typescript'`
+      in another terminal shows no servers left.
+
 ## Results notes
 
 

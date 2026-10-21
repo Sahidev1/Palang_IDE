@@ -65,7 +65,7 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 meson setup build                 # debug + ASan/UBSan + -Werror by default
 ninja -C build
 ninja -C build run                # runs with the LSan suppressions
-meson test -C build               # 13 programs, 92 cases; UI tests via xvfb-run
+meson test -C build               # 14 programs, 116 cases; UI tests via xvfb-run
 tools/build-deb.sh                # .deb of the last *commit* into build-deb/
 ```
 
@@ -115,8 +115,8 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 0 Setup | ✅ |
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
 | 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests passed (dialog stacking fixed afterwards) |
-| 2b LSP client (core, sync, diagnostics, go to definition) | **in progress**: step table and decisions in `docs/plan/phase-2.md` §2b/2c |
-| 2c LSP hover + completion | planned, next session after 2b |
+| 2b LSP client (core, sync, diagnostics, go to definition) | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2b) not yet run by sahi |
+| 2c LSP hover + completion | **next** (`docs/plan/phase-2.md` §2c, `docs/interfaces.md` lsp/ "For 2c") |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
 Open items: **no license chosen** (`debian/copyright` says TBD), the icon
@@ -189,24 +189,13 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Phase 2b, the LSP client. Decided with sahi on 2026-10-21 (recorded in
-`docs/plan/phase-2.md` §2b/2c): split into 2b and 2c; languages **C
-(clangd), Python (pylsp), JavaScript (typescript-language-server)**, no
-Rust; the Problems panel page comes later. Follow the 2b step table there.
-2b.0 (window split), 2b.1 (client core: `src/lsp/`, window wiring in
-`palang-window-lsp.c`, tests with `tests/fake-lsp-server.c`), 2b.2
-(document sync: `PalangLspDocument`, UTF-16 positions in
-`palang-lsp-position.c`) and 2b.3 (diagnostics: underlines, gutter icons,
-hover popup via `PalangLspHoverProvider`) and 2b.4 (go to definition: F12,
-Ctrl+click) are done; next is 2b.5, the end of the phase (PROGRESS,
-MANUAL_TESTS, `docs/03-*.md`, `docs/interfaces.md`).
+Phase 2b is done (PROGRESS.md, Phase 2b; guide `docs/03-how-phase-2b-works.md`).
+First read sahi's results in MANUAL_TESTS.md, Phase 2b, and investigate
+failures. Then Phase 2c: hover information and completion, maybe the
+Problems page; discuss the plan with sahi first (`docs/plan/phase-2.md`
+§2c, `docs/interfaces.md` lsp/ "For 2c").
 
-- `clangd` is installed; meson's `build/compile_commands.json` makes
-  Palang's own code the first test project.
-- `pylsp` + `python3-pyflakes` and typescript-language-server +
-  TypeScript 5 (under nvm's Node 23) are installed and work.
-- `typescript-language-server` comes from npm (`npm install -g
-  typescript-language-server typescript@5`); sahi's Node is from nvm, so it
-  may not be on `PATH` when Palang is started from the desktop menu.
-- `jsonrpc-glib` 3.44 is installed; GNOME Builder's LSP client is the
-  reference.
+- Installed and working: clangd, pylsp + python3-pyflakes,
+  typescript-language-server + TypeScript 5 (under nvm's Node 23).
+- Language servers in tests: `tests/fake-lsp-server.c` (options at its
+  top); window tests turn the real servers off.

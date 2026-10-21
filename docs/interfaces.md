@@ -6,7 +6,7 @@ without reading its implementation. **The headers are the full contract**
 module is for, how the modules connect, and where later phases plug in.
 
 Updated at the end of every phase (see ARCHITECTURE.md §5).
-Last updated: end of Phase 2a (2026-10-21).
+Last updated: end of Phase 2b (2026-10-21).
 
 ## How the pieces connect
 
@@ -27,6 +27,11 @@ main.c → PalangApplication (app/)
                │     └ "search":   PalangSearchPanel (search/)
                │           "match-activated" → palang_window_open_file_at ()
                ├ PalangPalette (palette/) dialogs: Ctrl+Shift+P, Ctrl+P
+               ├ PalangLspManager (lsp/), wired in palang-window-lsp.c
+               │     "root" ──bound──▶ manager "folder"
+               │     tabs ──▶ add/remove_document (), add_view ()
+               │     "server-failed" ──▶ toast; F12/Ctrl+click ──▶
+               │     find_definition_async () ──▶ palang_window_open_file_at ()
                ├ win.* actions
                └ on close: palang_window_dup_session () → session.ini
 ```
@@ -57,7 +62,7 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 
 | Header | Use it for |
 |---|---|
-| `palang-document.h` | **PalangDocument**, one open file. It *is* a `GtkSourceBuffer` (use any GtkTextBuffer/GtkSourceBuffer API on it). Async load/save, keeps encoding and line endings, picks the language. Properties: `file` (GFile, NULL if never saved), `title`. Signal: `changed-on-disk (gboolean deleted)`, for other programs' changes only. |
+| `palang-document.h` | **PalangDocument**, one open file. It *is* a `GtkSourceBuffer` (use any GtkTextBuffer/GtkSourceBuffer API on it). Async load/save, keeps encoding and line endings, picks the language. Properties: `file` (GFile, NULL if never saved; also notified on every save), `title`. Signals: `changed-on-disk (gboolean deleted)`, for other programs' changes only; `saved`, after our own saves (location and language already updated). |
 | `palang-editor.h` | **PalangEditor**, the widget in one tab: the view (`palang_editor_get_view ()` → `GtkSourceView`), the Find bar, Go to Line, the "changed on disk" banner. Properties: `document`, `title` ("• main.c" when modified), `path` ("~/…", for tooltips). |
 | `palang-search-bar.h` | The Find/Replace bar inside an editor. Usually reached through `palang_editor_show_search ()` / `palang_editor_find_next ()`. |
 
@@ -65,10 +70,15 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `GtkSourceFileLoader`/`Saver` or GIO directly.
 - `palang_editor_go_to ()` also works in a tab opened a moment ago (it
   keeps scrolling until the cursor is visible).
-- **Extension points:** LSP (2b) and AI (3) work on the document (text,
+- **Extension points:** `lsp/` (2b) works on the document (text,
   changes via the buffer's `insert-text`/`delete-range` signals, language
-  via `gtk_source_buffer_get_language ()`) and on the view (completion
-  providers via `gtk_source_view_get_completion ()`, hover, marks).
+  via `gtk_source_buffer_get_language ()`, tags and source marks for
+  diagnostics) and on the view (hover provider, gutter mark attributes).
+  AI (3) and completion (2c) use the view's
+  `gtk_source_view_get_completion ()`.
+- **Tag and mark names in use** (don't reuse): `palang-lsp-error`,
+  `palang-lsp-warning`, `palang-lsp-info` (tags *and* gutter mark
+  categories).
 - Tests: `tests/test-document.c`, `tests/test-editor.c`.
 
 ## workspace/
@@ -79,8 +89,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 | `palang-directory-model.h` | **PalangDirectoryModel**, a live `GListModel` of `GFileInfo` for one folder (follows creates, deletes, renames). Use it instead of GTK's `GtkDirectoryList`, which misses renamed-in files. |
 
 - **The project folder** is the tree's root (`root` property), available
-  as `palang_window_get_folder ()`. The terminal and project search follow
-  it by property binding; the LSP workspace root (2b) should too.
+  as `palang_window_get_folder ()`. The terminal, project search and the
+  language servers (`PalangLspManager:folder`) follow it by property
+  binding.
 - Tests: `tests/test-file-tree.c`.
 
 ## terminal/
@@ -122,6 +133,41 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   PalangPaletteItems, present a PalangPalette, act on the id.
 - Tests: `tests/test-fuzzy.c`, `tests/test-palette.c`.
 
+## lsp/
+
+| Header | Use it for |
+|---|---|
+| `palang-lsp-manager.h` | **PalangLspManager**, the language servers of one window: property `folder`; `add_document ()` / `remove_document ()` for every tab; `add_view ()` for its view (gutter icons, hover); `restart ()`; `get_client ()` / `get_lsp_document ()` for a document; `find_definition_async ()`. Signal `server-failed (message)`. **Start here.** |
+| `palang-lsp-client.h` | **PalangLspClient**, one server process: `start`, `stop` (polite, then killed after 2 s; holds the app), `call_async` (requests), `notify` (notifications), `get_capabilities ()`, `get_sync_kind ()`. Signals `ready` (also after each restart), `failed (message)`, `notification (method, params)`. |
+| `palang-lsp-document.h` | **PalangLspDocument**, one document as its server sees it: the sync (didOpen/didChange/didSave/didClose), `get_version ()`, `get_uri ()`, diagnostics (`set_diagnostics ()`, `dup_messages_at ()`). |
+| `palang-lsp-diagnostics.h` | Shows diagnostics in a buffer (tags, gutter marks, messages by position); used by PalangLspDocument. |
+| `palang-lsp-hover-provider.h` | **PalangLspHoverProvider**, the `GtkSourceHoverProvider` that shows diagnostic messages. 2c adds the server's hover text here. |
+| `palang-lsp-position.h` | Editor characters ↔ LSP UTF-16 units: pure functions and iter wrappers. **Every** position to or from a server goes through these. |
+| `palang-lsp-languages.h` | GtkSourceView language id → server (key, title, install hint) and LSP language id. Add a language here. |
+
+- **Servers:** settings `c-server` (clangd), `python-server` (pylsp),
+  `javascript-server` (typescript-language-server --stdio), group `[lsp]`;
+  empty turns one off. One server per server key per window, started for
+  the first document of its language.
+- **Messages are GVariants** (jsonrpc-glib): JSON objects are `a{sv}`,
+  arrays `av` (elements boxed in `v`). Build with `JSONRPC_MESSAGE_NEW`,
+  read with `JSONRPC_MESSAGE_PARSE`; `JSONRPC_MESSAGE_PUT_VARIANT` is
+  broken in 3.44 (use `GVariantDict`).
+- **Rules:** check the document version when an answer comes back, and
+  drop it if the text changed (`find_definition_async ()` does). Untitled
+  documents aren't sent until saved.
+- **For 2c:** hover = a request from `PalangLspHoverProvider` (its
+  `populate_async`); completion = a `GtkSourceCompletionProvider` added in
+  `add_view ()`; both use `palang_lsp_manager_get_lsp_document ()` and the
+  client's `call_async ()`. A Problems page would listen for diagnostics
+  changes (a new signal on PalangLspManager) and be added with
+  `palang_panel_add_page ()`.
+- **Phase 3 (ghost text) must not reach servers:** didChange is sent from
+  `insert-text`/`delete-range`, so ghost text has to be shown without
+  inserting into the buffer, or PalangLspDocument must skip it.
+- Tests: `tests/test-lsp.c` with `tests/fake-lsp-server.c` (options list
+  at its top).
+
 ## app/
 
 | Header | Use it for |
@@ -143,15 +189,17 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `win.open-folder`, `win.toggle-sidebar`, `win.toggle-panel`,
   `win.search-project`, `win.command-palette`, `win.quick-open`,
   `win.save`, `win.save-as`, `win.save-all`, `win.close-tab`, `win.find`,
-  `win.replace`, `win.find-next`, `win.find-previous`, `win.go-to-line`.
-- **Adding a panel page** (e.g. 2b's list of diagnostics): create the
+  `win.replace`, `win.find-next`, `win.find-previous`, `win.go-to-line`,
+  `win.go-to-definition` (F12), `win.restart-language-servers`.
+- **Adding a panel page** (e.g. 2c's Problems page): create the
   widget in the window and call `palang_panel_add_page ()`; connect its
   signals there.
 - **The window is split over several files** (2b.0): `palang-window.c`
   (tabs, files, saving, session), `palang-window-panel.c` (panel pages,
-  key routing), `palang-window-palette.c` (palette, Quick Open), sharing
-  the struct through `palang-window-private.h`. New window wiring for a
-  feature (e.g. LSP) goes into its own `palang-window-<feature>.c`.
+  key routing), `palang-window-palette.c` (palette, Quick Open),
+  `palang-window-lsp.c` (language servers, go to definition), sharing the
+  struct through `palang-window-private.h`. New window wiring for a
+  feature goes into its own `palang-window-<feature>.c`.
 - Tests: `tests/test-window.c` (UI, under xvfb), `tests/test-session.c`,
   `tests/test-application.c`, `tests/test-command-line.c`.
 

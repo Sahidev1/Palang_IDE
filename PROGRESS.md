@@ -4,6 +4,103 @@ Newest phase at the top. See [PLAN.md](PLAN.md) for the roadmap.
 
 ---
 
+## Phase 2b — Language servers: sync, diagnostics, go to definition ✅ (2026-10-21)
+
+Palang now starts a language server for C/C++ (clangd), Python (pylsp)
+and JavaScript/TypeScript (typescript-language-server), keeps its copy of
+every open file up to date, shows its errors and warnings in the editor,
+and jumps to definitions (F12, Ctrl+click). Hover information and
+completion are Phase 2c.
+
+### What was built (one commit per step)
+| Step | Commit | What |
+|---|---|---|
+| plan | `102b9b2` | Decisions: 2b/2c split, C + Python (pylsp) + JavaScript, no Rust, Problems page later |
+| 2b.0 | `b1a3083` | `palang-window.c` split into `-panel.c` and `-palette.c` (shared struct in `palang-window-private.h`); no behaviour change |
+| 2b.1 | `fc238d0` | Client core: `PalangLspClient` (one server process: handshake, shutdown, restart after crashes), `PalangLspManager` (one server per language per window), `[lsp]` settings, failure toasts with Details, "Restart Language Servers" |
+| 2b.2 | `af2eb97` | Document sync: `PalangLspDocument` (didOpen/didChange/didSave/didClose, versions), UTF-16 positions, `PalangDocument::saved` |
+| 2b.3 | `b2012fd` | Diagnostics: wavy underlines, gutter icons, message on hover (`PalangLspHoverProvider`) |
+| 2b.4 | `37a4beb` | Go to definition: F12 and Ctrl+click |
+
+### Verification
+- **Tests:** 14 test programs, 116 test cases, plus the desktop-file check
+  (Phase 2a: 13 programs, 92 cases). New: `test-lsp` (24 cases) against
+  `tests/fake-lsp-server.c`, a small JSON-RPC server that tests tell how
+  to behave (crash, hang, refuse to start, publish diagnostics, answer
+  definitions, answer late). All pass under ASan/UBSan; `test-lsp` passed
+  10 repeated runs after each step.
+- **Real app** on Xvfb, with the real servers:
+  - clangd and pylsp start when a file of their language opens, and
+    quitting stops them (exit code 0, no servers left over).
+  - Typing a line with an emoji into a C file: clangd's log shows the
+    edit positions jump by two across the emoji, and its only diagnostic
+    lands on the right column.
+  - Diagnostics from all three servers appear at the right places; hovering
+    an error shows its message.
+  - F12 on `palang_application_new ()` in `main.c` opens its definition;
+    Ctrl+click on `g_application_run ()` opens GLib's `gapplication.h` at
+    line 224.
+  - A missing server, a server that refuses to start, and "Restart
+    Language Servers" all work as described below.
+- **valgrind** (build without sanitizers, with clangd and pylsp, F12 and
+  hover): no invalid reads or writes; the definite leaks are all in
+  fontconfig (13), GIO's module loading (2) and GLib's load-time setup
+  (1); "uninitialised value" reports are only in librsvg and Mesa's
+  generated code.
+
+### Bugs found and fixed on the way
+- **An error reply to `initialize` was treated as a crash** (retried three
+  times, then "keeps stopping"), hiding the server's own explanation. It
+  now fails at once with the server's message.
+- **The 2-second kill timeout could fire up to a second early**
+  (`g_timeout_add_seconds` rounds to whole-second ticks); found by
+  repeated test runs.
+- **Toasts cut long messages** to one line: failure toasts got a Details
+  button with the full, selectable text.
+- **Hover missed one-letter errors**: GtkSourceHover gives the character
+  boundary *nearest* the pointer, so over the right half of `x` it was
+  past the range. A range's end now counts as inside.
+- **Go to line in a new tab could stop scrolling too early** (a Phase 2a
+  bug, found by go to definition into a long file): a new text view's
+  line positions are estimates for a few frames. It now waits until the
+  cursor stays visible, and no longer scrolls sideways needlessly.
+- **The window tests started the real clangd** (they open `a.c`); they now
+  turn the servers off.
+
+### Changes to the plan
+- **Phase 2 split into 2b and 2c** (decided before coding); hover
+  information and completion move to 2c, together with the Problems page.
+- **Setup found on this machine** (now in the install hints and the plan):
+  pylsp reports nothing without `python3-pyflakes`; typescript-language-
+  server 6 needs TypeScript 5 (7 has no `tsserver`), installed under the
+  same nvm Node version as the server.
+- **Untitled documents** reach the server only once saved (servers need a
+  file name).
+- **Columns of a definition in a file that isn't open** are the server's
+  UTF-16 count, used as characters (off only after emoji and similar on
+  that line); exact when the file is open.
+- **Gutter icons have no tooltips** (GtkSourceView 5 dropped them); the
+  message shows on hovering the underlined text.
+
+### Open items
+- Gutter icons are grey (symbolic icons take the gutter's text color);
+  shape tells error from warning. Coloured icons would need our own
+  paintables.
+- No "go back" after a jump (Alt+Left in other editors).
+- The hover popup draws a black box around itself on Xvfb (no
+  compositor); check on the real desktop (manual tests).
+- Still open from earlier: license, icon, Follow System on MATE.
+
+### Where to start reading
+1. `docs/03-how-phase-2b-works.md`.
+2. `src/lsp/palang-lsp-client.c` (the server's life), then
+   `palang-lsp-document.c` (sync) and `palang-lsp-manager.c`.
+
+### Next
+Phase 2c: hover information and completion, maybe the Problems page.
+
+---
+
 ## Phase 2a — Terminal, `palang` command, search, palette ✅ (2026-10-21)
 
 Palang now has a bottom panel with a terminal and project-wide search, a
