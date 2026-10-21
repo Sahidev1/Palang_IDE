@@ -1,42 +1,146 @@
 # Phase 2 — Editor essentials
 
-Split into two Claude sessions: **2a** (three fairly independent panels)
-and **2b** (the LSP client, big on its own). Each half ends like a phase:
-PROGRESS.md entry, manual tests, a `docs/` guide and an updated
-`docs/interfaces.md`.
+Split into two Claude sessions: **2a** (terminal, `palang` command, project
+search, command palette) and **2b** (the LSP client, big on its own). Each
+half ends like a phase: PROGRESS.md entry, manual tests, a `docs/` guide and
+an updated `docs/interfaces.md`.
 
-The details below are a starting point; plan them with sahi at the start of
-each session, before coding.
+## 2a. Terminal, `palang` command, project search, command palette
 
-## 2a. Terminal, project search, command palette
+Planned with sahi on 2026-10-21; decisions are marked **(decided)**.
 
-**Groundwork in `app/`** (first, since all three need it):
-- A **bottom panel** in the window (the terminal and search results live
-  there), toggled by a shortcut, remembered in the session.
-- A public **"active editor changed"** notification on the window (the
-  palette needs the current editor; 2b's LSP will too).
-- A way to add panels and actions without growing `palang-window.c` much
-  (see ARCHITECTURE.md rule 4).
+### Steps (one commit each)
 
-**Integrated terminal** — module `terminal/`
-- VTE (GTK4 build, `vte-2.91-gtk4`, installed: 0.76) running the user's
-  shell, starting in the project folder.
+| Step | What |
+|---|---|
+| 2a.1 | Groundwork in `app/`: bottom panel, `active-editor` property, command table |
+| 2a.2 | Terminal |
+| 2a.3 | `palang` command in the terminal (settings from the command line) |
+| 2a.4 | Project search |
+| 2a.5 | Command palette + Quick Open |
+| 2a.6 | End of phase: PROGRESS, manual tests, `docs/02-*.md`, `interfaces.md` |
+
+### 2a.1 Groundwork in `app/`
+
+- **Bottom panel:** a new type `PalangPanel` (`app/palang-panel.c`): a
+  resizable area under the tabs (vertical `GtkPaned`) with switchable pages
+  ("Terminal", "Search"). API like `palang_panel_add_page (panel, widget,
+  id, title, icon_name)`, so the window only creates the pages and adds
+  them. Toggle with **Ctrl+J (decided)**. The session remembers whether it
+  is shown, its height and the selected page.
+- **`active-editor` property** on `PalangWindow`; others use
+  `notify::active-editor` (bindable, more idiomatic than a custom signal).
+- **Command table:** `shortcuts[]` in `palang-application.c` becomes one
+  table of commands: action, human name ("Save All"), shortcut. It feeds
+  both the shortcuts and the palette (as a `GListModel`, so `palette/`
+  doesn't depend on `app/`).
+
+### 2a.2 Terminal — module `terminal/`
+
+- `PalangTerminal` wraps a VTE terminal (`vte-2.91-gtk4`). **One terminal
+  (decided)**; several (tabs in the panel) can come later.
+- Starts the user's shell (`$SHELL`, else from the passwd entry)
+  asynchronously, in the project folder (home folder if none).
+- When the shell exits: "Process exited — press Enter to restart".
+- Ctrl+Shift+C / Ctrl+Shift+V copy and paste; follows light/dark and the
+  editor font.
+- Environment for the shell: `PALANG_TERMINAL=1`, and `PATH` starting with
+  the running Palang's own folder (see 2a.3).
 - Phase 6 runs `claude` in this terminal.
 
-**Project-wide search** — module `search/`
-- Use `rg` (ripgrep, installed) through `GSubprocess` when available, with
-  a fallback that walks files with `GFileEnumerator` in a worker thread
-  (respecting `.gitignore` in a basic way).
-- Results in the bottom panel; activating one opens the file at the line
-  (`palang_window_open_file ()` + `palang_editor_go_to ()`).
+### 2a.3 The `palang` command — `app/` + `settings/`
 
-**Command palette** — module `palette/`
-- Ctrl+Shift+P; fuzzy search over the app's actions (listed in
-  `docs/interfaces.md`, app/) with their shortcuts.
+Change preferences from the Palang terminal instead of the Preferences
+window. Not intercepted keystrokes: `palang` is the real executable.
+Running it again hands the arguments to the running Palang over D-Bus
+(GApplication single instance, `G_APPLICATION_HANDLES_COMMAND_LINE`), which
+prints its reply into the calling terminal and sets the exit status
+(`GApplicationCommandLine`).
 
-**Verification:** the terminal runs a shell in the project folder; search
-finds text across the project and opens results at the right line, with and
-without `rg`; the palette runs any action.
+```
+$ palang help
+$ palang settings                 # every setting: value, allowed values, description
+$ palang get tab-width
+$ palang set tab-width 2          # applies live, saved to config.ini
+$ palang set color-scheme purple  # error: must be one of system, light, dark (exit 1)
+$ palang reset tab-width          # back to the default
+```
+
+- **Only in the Palang terminal (decided):** subcommands work only when
+  `PALANG_TERMINAL=1` is set, because outside it a name like `palang set`
+  could clash with other uses. Outside, `palang <file>` opens files as
+  before (so `palang settings` there opens a file named `settings`).
+  Inside, subcommands win; open a file named like a subcommand with
+  `palang ./set`. (The variable avoids clashes; it isn't a security
+  boundary.)
+- **Inside the Palang terminal it always takes priority** over any other
+  `palang` on the system: the terminal puts the running Palang's own folder
+  first in `PATH` (in development that is `build/src/`, not an installed
+  copy).
+- **Name: `palang`, no alias (decided).**
+- **Generated from the settings table:** each row of `options[]` in
+  `palang-settings.c` gains a description; `settings` and `help` are
+  produced from the table, so future preferences appear automatically and
+  are checked the same way as in Preferences. `settings/` gains reading and
+  writing a setting by name as text (e.g.
+  `palang_settings_set_from_string (settings, "tab-width", "2", &error)`)
+  and a way to list the options.
+- Parsing and replies live in `app/palang-command-line.c`.
+- **Bash completion (decided):** the `.deb` installs
+  `/usr/share/bash-completion/completions/palang`: `palang set <Tab>`
+  lists setting names, `palang set color-scheme <Tab>` its values. It
+  offers subcommands only when `PALANG_TERMINAL` is set. The setting names
+  come from Palang itself (a hidden subcommand), so the script never needs
+  updating.
+
+### 2a.4 Project search — module `search/`
+
+- `rg --json` through `GSubprocess`, parsed with json-glib (copes with
+  `:` in file names; gives match positions for highlighting).
+- **ripgrep is required (decided):** a `.deb` dependency; no fallback file
+  walker. If `rg` is missing (a source build), the search page says so.
+- UI in the panel: search box with case / whole word / regex options;
+  results grouped by file (GTK list section headers); activating a result
+  opens the file at its line and column (`palang_window_open_file ()` +
+  `palang_editor_go_to ()`). Ctrl+Shift+F opens it with the selection.
+- A new search cancels the running one; results are capped (about 5000) so
+  huge projects stay responsive.
+- Limitation (documented): searches files on disk, so unsaved changes
+  aren't found.
+- **Project-wide replace: later (decided)**, not in 2a.
+
+### 2a.5 Command palette + Quick Open — module `palette/`
+
+- **Ctrl+Shift+P:** an `AdwDialog` with a search box and the commands
+  (name + shortcut) from the command table; Enter runs one.
+- **Quick Open, Ctrl+P (decided):** same widget, listing the project's files
+  (`rg --files`, which respects `.gitignore`); Enter opens one.
+- Fuzzy matching: letters in order, matches at word starts ranked higher
+  ("sva" → "Save All"). A pure function, unit-tested without a display.
+
+### Tests
+
+- No display: `rg` JSON parsing, the fuzzy matcher, the command table,
+  settings by name as text, `palang` command parsing and replies.
+- UI (xvfb): the panel toggles and is restored; the terminal starts a shell
+  and shows its output; a search result opens the file at the right line;
+  the palette runs an action; Quick Open opens a file.
+- Real app with xdotool for each step, including `palang set` typed into
+  the terminal changing an open editor.
+
+### Packaging
+
+- Build-Depends: `libvte-2.91-gtk4-dev`, `libjson-glib-dev`.
+- Depends (via `${shlibs:Depends}` for the libraries) plus `ripgrep`.
+- Installs the bash completion file.
+
+### Verification
+
+The terminal runs a shell in the project folder; `palang set tab-width 2`
+in it changes open editors and Preferences, while outside the Palang
+terminal `palang set …` is treated as file names; search finds text across the project
+and opens results at the right line; the palette runs any action; Quick
+Open opens files.
 
 ## 2b. LSP client
 

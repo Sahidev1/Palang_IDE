@@ -109,7 +109,7 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 |---|---|
 | 0 Setup | ✅ |
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
-| 2a Terminal, project search, command palette | next (`docs/plan/phase-2.md`) |
+| 2a Terminal, `palang` command, project search, palette + Quick Open | planned with sahi, ready to code (`docs/plan/phase-2.md`) |
 | 2b LSP client | after 2a |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
@@ -166,7 +166,6 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Plan Phase 2a with sahi before coding (`docs/plan/phase-2.md`): the
-bottom panel and other groundwork in `app/`, then the terminal (VTE),
-project-wide search and the command palette. Phase 2b (LSP) is a separate
-session; it needs `clangd` installed first.
+Implement Phase 2a, step by step, as planned and decided with sahi in
+`docs/plan/phase-2.md` (steps 2a.1–2a.6, one commit each). Phase 2b (LSP)
+is a separate session; it needs `clangd` installed first.
