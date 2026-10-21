@@ -138,7 +138,7 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   in the window, or an `app.` action), then add one row to `commands[]` in
   `palang-application.c`: it gets its shortcut and appears in the command
   palette. If its shortcut must work while the terminal has the focus, add
-  it to `commands_kept_in_terminal[]` in `palang-window.c`.
+  it to `commands_kept_in_terminal[]` in `palang-window-panel.c`.
 - **Actions:** `app.quit`, `app.preferences`; `win.new`, `win.open`,
   `win.open-folder`, `win.toggle-sidebar`, `win.toggle-panel`,
   `win.search-project`, `win.command-palette`, `win.quick-open`,
@@ -147,10 +147,11 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 - **Adding a panel page** (e.g. 2b's list of diagnostics): create the
   widget in the window and call `palang_panel_add_page ()`; connect its
   signals there.
-- **Size:** `palang-window.c` is now ~1600 lines. The terminal/search/
-  palette wiring (`add_*_page`, the key routing, the palette actions) is
-  the natural next part to move into its own file (ARCHITECTURE.md
-  rule 4) when 2b adds more.
+- **The window is split over several files** (2b.0): `palang-window.c`
+  (tabs, files, saving, session), `palang-window-panel.c` (panel pages,
+  key routing), `palang-window-palette.c` (palette, Quick Open), sharing
+  the struct through `palang-window-private.h`. New window wiring for a
+  feature (e.g. LSP) goes into its own `palang-window-<feature>.c`.
 - Tests: `tests/test-window.c` (UI, under xvfb), `tests/test-session.c`,
   `tests/test-application.c`, `tests/test-command-line.c`.
 

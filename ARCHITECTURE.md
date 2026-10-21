@@ -56,8 +56,10 @@ working together on one concern.
 4. **`app/` composes, it doesn't implement.** The window places widgets,
    registers actions and connects modules. A new feature is a new module
    (or a new type in one) that the window adds, not more code in
-   `palang-window.c` (already ~1000 lines). When a part of the window grows
-   big, it moves out into its own type.
+   `palang-window.c` (~1200 lines). When a part of the window grows big, it
+   moves out into its own type, or at least its own file: the window is
+   already split into `palang-window.c`, `palang-window-panel.c` and
+   `palang-window-palette.c` (see `palang-window-private.h`).
 5. **One owner per resource.** All file I/O goes through `PalangDocument`;
    all preferences through `PalangSettings`; later, all network calls for
    AI through the `ai/` provider interface and all language-server traffic

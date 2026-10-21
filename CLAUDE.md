@@ -119,8 +119,7 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 2c LSP hover + completion | planned, next session after 2b |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
-Open items: `palang-window.c` is ~1600 lines, split it before adding LSP
-wiring (PROGRESS.md, Phase 2a); **no license chosen** (`debian/copyright` says TBD), the icon
+Open items: **no license chosen** (`debian/copyright` says TBD), the icon
 (`data/icons/…svg`) is a placeholder, Follow System doesn't switch on MATE
 (low priority, cause unknown), and the open decisions in PLAN.md §5
 (shortcut prefix `_` vs `\`, math rendering engine, default AI provider,
@@ -165,8 +164,9 @@ the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
     phase-3-autocomplete §4, phase-4-5-math §6, phase-6-agentic).
 11. **GTK4 runs application shortcuts before the focused widget.** A
     widget that needs Ctrl+letter keys (the terminal) only gets them
-    because a window key controller added in `palang_window_init` forwards
-    them first (`commands_kept_in_terminal[]`).
+    because a window key controller (`_palang_window_init_key_routing`,
+    added in `palang_window_init` before the template) forwards them first
+    (`commands_kept_in_terminal[]` in `palang-window-panel.c`).
 12. **GApplication command lines:** the caller's environment reaches the
     running instance only with `G_APPLICATION_SEND_ENVIRONMENT`.
 13. **Layout timing:** a text view created a moment ago can't scroll to a
@@ -190,8 +190,9 @@ automatically in new sessions in this folder.
 Phase 2b, the LSP client. Decided with sahi on 2026-10-21 (recorded in
 `docs/plan/phase-2.md` §2b/2c): split into 2b and 2c; languages **C
 (clangd), Python (pylsp), JavaScript (typescript-language-server)**, no
-Rust; the Problems panel page comes later. Follow the 2b step table there,
-starting with 2b.0 (splitting `palang-window.c`).
+Rust; the Problems panel page comes later. Follow the 2b step table there.
+2b.0 (splitting `palang-window.c`) is done; next is 2b.1, the client core.
+LSP wiring in the window goes into its own `palang-window-lsp.c`.
 
 - `clangd` is installed; meson's `build/compile_commands.json` makes
   Palang's own code the first test project.

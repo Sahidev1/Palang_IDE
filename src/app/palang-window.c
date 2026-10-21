@@ -6,69 +6,29 @@
  * Under the tabs is the bottom panel (PalangPanel, palang-panel.c) in a
  * vertical GtkPaned; Ctrl+J shows and hides it.
  *
+ * The window's code is split over several files: the bottom panel is in
+ * palang-window-panel.c, the command palette and Quick Open in
+ * palang-window-palette.c. palang-window-private.h has the struct they
+ * share and explains the split.
+ *
  * Sections of this file:
  *   - Tabs: adding, finding, and keeping the window title in sync
  *   - Opening files and folders
  *   - Saving (Save, Save As, Save All)
  *   - Closing a tab with unsaved changes
  *   - Closing the window with unsaved changes
- *   - Bottom panel
  *   - Session: remembering what was open
  *   - Actions (what menu items and shortcuts call)
  */
 
 #include "config.h"
 
-#include "palang-command.h"
-#include "palang-file-tree.h"
-#include "palang-palette.h"
-#include "palang-panel.h"
 #include "palang-save-flow.h"
-#include "palang-search-panel.h"
-#include "palang-terminal.h"
-#include "palang-window.h"
+#include "palang-window-private.h"
 
-struct _PalangWindow
-{
-  AdwApplicationWindow parent_instance;
-
-  /* Template children */
-  AdwOverlaySplitView *split_view;
-  AdwWindowTitle  *sidebar_title;
-  PalangFileTree  *file_tree;
-  AdwWindowTitle  *window_title;
-  AdwTabBar       *tab_bar;
-  AdwToastOverlay *toast_overlay;
-  GtkStack        *stack;
-  AdwTabView      *tab_view;
-  GtkPaned        *paned;
-  PalangPanel     *panel;
-
-  /* Pages of the panel, created in init */
-  PalangTerminal    *terminal;
-  PalangSearchPanel *search_panel;
-
-  /* The open palette, if any (not owned; see show_palette), and the
-   * action that opened it. */
-  PalangPalette   *palette;
-  const char      *palette_action;
-
-  /* The panel's height while it's hidden, measured like GtkPaned does:
-   * from the divider to the bottom (see panel_height_on_screen). */
-  int panel_height;
-
-  /* Bindings that show the selected editor's title/path in the header bar.
-   * We hold a reference so we can safely unbind them when the selection
-   * changes, even if the old editor is already gone. */
-  GBinding *title_binding;
-  GBinding *subtitle_binding;
-  GBinding *window_title_binding;  /* title the taskbar shows */
-};
 
 G_DEFINE_FINAL_TYPE (PalangWindow, palang_window, ADW_TYPE_APPLICATION_WINDOW)
 
-/* Height of the bottom panel when nothing was saved. */
-#define DEFAULT_PANEL_HEIGHT 250
 
 enum {
   PROP_0,
@@ -78,9 +38,9 @@ enum {
 
 static GParamSpec *properties[N_PROPS];
 
-static void
-show_toast (PalangWindow *self,
-            const char   *message)
+void
+_palang_window_show_toast (PalangWindow *self,
+                           const char   *message)
 {
   adw_toast_overlay_add_toast (self->toast_overlay, adw_toast_new (message));
 }
@@ -99,7 +59,7 @@ show_save_error (PalangWindow   *self,
 
   title = palang_document_dup_title (document);
   message = g_strdup_printf ("Could not save “%s”: %s", title, error->message);
-  show_toast (self, message);
+  _palang_window_show_toast (self, message);
 }
 
 static PalangEditor *
@@ -329,7 +289,7 @@ on_file_loaded (GObject      *source,
       g_autofree char *message = g_strdup_printf ("Could not open file: %s", error->message);
 
       if (self->toast_overlay != NULL)
-        show_toast (self, message);
+        _palang_window_show_toast (self, message);
       return;
     }
 
@@ -593,7 +553,7 @@ on_save_all_done (GObject      *source,
 
   if (!save_documents_finish (self, result, &error) &&
       !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-    show_toast (self, error->message);
+    _palang_window_show_toast (self, error->message);
 }
 
 /* ---- Closing a tab with unsaved changes --------------------------------- */
@@ -742,7 +702,7 @@ on_close_window_saved (GObject      *source,
   if (save_documents_finish (self, result, &error))
     close_without_asking (self);
   else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-    show_toast (self, error->message);
+    _palang_window_show_toast (self, error->message);
 }
 
 static void
@@ -810,236 +770,6 @@ palang_window_close_request (GtkWindow *window)
   return TRUE;
 }
 
-/* ---- Bottom panel ------------------------------------------------------- */
-
-/* The panel's height as GtkPaned sees it: from the divider to the bottom,
- * i.e. the paned's height minus the divider's position (which GtkPaned
- * counts from the top). Measured this way, putting the divider back at
- * "paned height − panel height" gives exactly the same layout again. */
-static int
-panel_height_on_screen (PalangWindow *self)
-{
-  int paned_height = gtk_widget_get_height (GTK_WIDGET (self->paned));
-
-  if (!gtk_widget_get_visible (GTK_WIDGET (self->panel)) || paned_height <= 0)
-    return self->panel_height;
-
-  return paned_height - gtk_paned_get_position (self->paned);
-}
-
-/* Gives the panel self->panel_height by moving the divider. This needs the
- * paned's own height, which only exists once the window has been laid out
- * (not yet when a session is restored at startup).
- *
- * A "tick callback" runs before every frame GTK draws for a widget; it
- * keeps running until it returns G_SOURCE_REMOVE. We use it to wait for
- * the first frame in which the paned has a height. */
-static gboolean
-restore_panel_height (GtkWidget     *paned,
-                      GdkFrameClock *frame_clock,
-                      gpointer       user_data)
-{
-  PalangWindow *self = PALANG_WINDOW (user_data);
-  int paned_height = gtk_widget_get_height (paned);
-
-  if (paned_height <= 0)
-    return G_SOURCE_CONTINUE;
-
-  gtk_paned_set_position (self->paned, MAX (0, paned_height - self->panel_height));
-  return G_SOURCE_REMOVE;
-}
-
-/* The panel was shown or hidden (Ctrl+J, its close button, the header bar
- * button, a restored session).
- *
- * Shown: it gets back the height it had (or the default). While it was
- * hidden the tabs had all the room, and window resizes in the meantime
- * moved the divider, so we put the divider back ourselves. Without that, a
- * panel shown at startup would also get just its minimum height (the
- * switcher row).
- *
- * Hidden: remember its height. And if it had the keyboard focus, GTK would
- * leave the focus nowhere; give it back to the text instead. */
-static void
-on_panel_visible_changed (PalangPanel  *panel,
-                          GParamSpec   *pspec,
-                          PalangWindow *self)
-{
-  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
-  PalangEditor *editor = palang_window_get_active_editor (self);
-
-  if (gtk_widget_get_visible (GTK_WIDGET (panel)))
-    {
-      gtk_widget_add_tick_callback (GTK_WIDGET (self->paned), restore_panel_height, self, NULL);
-      return;
-    }
-
-  /* The divider hasn't moved yet, so this is still the height it had. */
-  if (gtk_widget_get_height (GTK_WIDGET (self->paned)) > 0)
-    self->panel_height = gtk_widget_get_height (GTK_WIDGET (self->paned)) -
-                         gtk_paned_get_position (self->paned);
-
-  if (editor != NULL &&
-      (focus == NULL || gtk_widget_is_ancestor (focus, GTK_WIDGET (panel))))
-    gtk_widget_grab_focus (GTK_WIDGET (editor));
-}
-
-/* The terminal page. Its shell starts in the project folder: the terminal
- * follows the file tree's root (a property binding), and uses it the next
- * time a shell starts.
- *
- * The shell also gets PALANG_TERMINAL=1, and the folder of the running
- * Palang program first in PATH, so that typing `palang` in it runs this very
- * Palang (in development: build/src/palang, not an installed copy). */
-static void
-add_terminal_page (PalangWindow *self)
-{
-  g_autofree char *program = g_file_read_link ("/proc/self/exe", NULL);
-  g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
-  g_auto (GStrv) environment = NULL;
-
-  self->terminal = palang_terminal_new ();
-
-  g_strv_builder_add (builder, "PALANG_TERMINAL=1");
-  if (program != NULL)
-    {
-      g_autofree char *program_folder = g_path_get_dirname (program);
-      const char *old_path = g_getenv ("PATH");
-
-      if (old_path != NULL && old_path[0] != '\0')
-        g_strv_builder_take (builder, g_strdup_printf ("PATH=%s:%s", program_folder, old_path));
-      else
-        g_strv_builder_take (builder, g_strdup_printf ("PATH=%s", program_folder));
-    }
-  environment = g_strv_builder_end (builder);
-  palang_terminal_set_environment (self->terminal, (const char * const *) environment);
-
-  g_object_bind_property (self->file_tree, "root", self->terminal, "directory",
-                          G_BINDING_SYNC_CREATE);
-
-  palang_panel_add_page (self->panel, GTK_WIDGET (self->terminal),
-                         "terminal", "Terminal", "utilities-terminal-symbolic");
-}
-
-/* While the terminal has the keyboard focus, keys belong to the shell:
- * Ctrl+W deletes a word, Ctrl+R searches the history, and so on. Only the
- * commands listed here keep their shortcuts there; their keys come from
- * the command table (palang-application.c). */
-static const char * const commands_kept_in_terminal[] = {
-  "win.toggle-panel",
-  "win.toggle-sidebar",
-  "win.search-project",
-  "win.command-palette",
-  "win.quick-open",
-  "app.preferences",
-  "app.quit",
-};
-
-/* TRUE if the key being pressed is the shortcut of one of
- * commands_kept_in_terminal. */
-static gboolean
-is_kept_shortcut (PalangWindow       *self,
-                  GtkEventController *controller)
-{
-  GtkApplication *app = gtk_window_get_application (GTK_WINDOW (self));
-  GdkEvent *event = gtk_event_controller_get_current_event (controller);
-
-  if (app == NULL)
-    return FALSE;
-
-  for (guint i = 0; i < G_N_ELEMENTS (commands_kept_in_terminal); i++)
-    {
-      g_auto (GStrv) accels = gtk_application_get_accels_for_action (app, commands_kept_in_terminal[i]);
-
-      for (guint j = 0; accels[j] != NULL; j++)
-        {
-          /* A GtkShortcutTrigger knows how to compare a key press with a
-           * shortcut like "<Control>j" (Shift, Caps Lock, keyboard layouts). */
-          g_autoptr (GtkShortcutTrigger) trigger = gtk_shortcut_trigger_parse_string (accels[j]);
-
-          if (trigger != NULL &&
-              gtk_shortcut_trigger_trigger (trigger, event, FALSE) == GDK_KEY_MATCH_EXACT)
-            return TRUE;
-        }
-    }
-
-  return FALSE;
-}
-
-/* Runs for every key pressed in the window, before the application's
- * shortcuts: both act in the "capture phase" (on the way from the window
- * down to the focused widget), and this controller, added in init, comes
- * first (checked: on Ctrl+W it runs while the tab is still open). */
-static gboolean
-on_window_key_pressed (GtkEventControllerKey *controller,
-                       guint                  keyval,
-                       guint                  keycode,
-                       GdkModifierType        state,
-                       PalangWindow          *self)
-{
-  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
-
-  if (focus == NULL || !gtk_widget_is_ancestor (focus, GTK_WIDGET (self->terminal)))
-    return GDK_EVENT_PROPAGATE;
-
-  if (is_kept_shortcut (self, GTK_EVENT_CONTROLLER (controller)))
-    return GDK_EVENT_PROPAGATE;
-
-  return palang_terminal_forward_key (self->terminal, controller) ? GDK_EVENT_STOP
-                                                                  : GDK_EVENT_PROPAGATE;
-}
-
-/* The search page. It searches the project folder (bound to the file
- * tree's root, like the terminal), and a clicked result opens its file at
- * the match. */
-static void
-on_search_match_activated (PalangSearchPanel *panel,
-                           PalangSearchMatch *match,
-                           PalangWindow      *self)
-{
-  palang_window_open_file_at (self, palang_search_match_get_file (match),
-                              palang_search_match_get_line (match),
-                              palang_search_match_get_column (match));
-}
-
-static void
-add_search_page (PalangWindow *self)
-{
-  self->search_panel = palang_search_panel_new ();
-
-  g_object_bind_property (self->file_tree, "root", self->search_panel, "folder",
-                          G_BINDING_SYNC_CREATE);
-  g_signal_connect (self->search_panel, "match-activated",
-                    G_CALLBACK (on_search_match_activated), self);
-
-  palang_panel_add_page (self->panel, GTK_WIDGET (self->search_panel),
-                         "search", "Search", "system-search-symbolic");
-}
-
-PalangSearchPanel *
-palang_window_get_search_panel (PalangWindow *self)
-{
-  g_return_val_if_fail (PALANG_IS_WINDOW (self), NULL);
-
-  return self->search_panel;
-}
-
-PalangTerminal *
-palang_window_get_terminal (PalangWindow *self)
-{
-  g_return_val_if_fail (PALANG_IS_WINDOW (self), NULL);
-
-  return self->terminal;
-}
-
-PalangPanel *
-palang_window_get_panel (PalangWindow *self)
-{
-  g_return_val_if_fail (PALANG_IS_WINDOW (self), NULL);
-
-  return self->panel;
-}
-
 /* ---- Session: remembering what was open --------------------------------- */
 
 PalangSession *
@@ -1055,7 +785,7 @@ palang_window_dup_session (PalangWindow *self)
     session->folder = g_object_ref (palang_window_get_folder (self));
   session->show_sidebar = adw_overlay_split_view_get_show_sidebar (self->split_view);
   session->show_panel = gtk_widget_get_visible (GTK_WIDGET (self->panel));
-  session->panel_height = panel_height_on_screen (self);
+  session->panel_height = _palang_window_get_panel_height (self);
   session->panel_page = g_strdup (palang_panel_get_visible_page (self->panel));
 
   selected = adw_tab_view_get_selected_page (self->tab_view);
@@ -1246,224 +976,6 @@ toggle_sidebar_action (GtkWidget  *widget,
                                            !adw_overlay_split_view_get_show_sidebar (self->split_view));
 }
 
-/* Ctrl+J. Showing the panel also moves the keyboard focus into it, so
- * Ctrl+J is enough to get to the terminal and back. */
-static void
-toggle_panel_action (GtkWidget  *widget,
-                     const char *action_name,
-                     GVariant   *parameter)
-{
-  PalangWindow *self = PALANG_WINDOW (widget);
-  gboolean show = !gtk_widget_get_visible (GTK_WIDGET (self->panel));
-
-  gtk_widget_set_visible (GTK_WIDGET (self->panel), show);
-  if (show)
-    palang_panel_focus_page (self->panel);
-}
-
-/* Ctrl+Shift+F: the Search page, with the selected text (if it's on one
- * line) as what to search for. */
-static void
-search_project_action (GtkWidget  *widget,
-                       const char *action_name,
-                       GVariant   *parameter)
-{
-  PalangWindow *self = PALANG_WINDOW (widget);
-  PalangEditor *editor = palang_window_get_active_editor (self);
-  g_autofree char *selected = NULL;
-  GtkTextIter start, end;
-
-  if (editor != NULL &&
-      gtk_text_buffer_get_selection_bounds (GTK_TEXT_BUFFER (palang_editor_get_document (editor)),
-                                            &start, &end) &&
-      gtk_text_iter_get_line (&start) == gtk_text_iter_get_line (&end))
-    selected = gtk_text_iter_get_text (&start, &end);
-
-  gtk_widget_set_visible (GTK_WIDGET (self->panel), TRUE);
-  palang_panel_set_visible_page (self->panel, "search");
-  palang_search_panel_focus (self->search_panel, selected);
-}
-
-/* ---- Command palette and Quick Open ------------------------------------ */
-
-static void
-on_command_chosen (PalangPalette     *palette,
-                   PalangPaletteItem *item,
-                   PalangWindow      *self)
-{
-  /* The item's id is the action's name ("win.save-all", "app.quit");
-   * actions are found by name from the window, "app." ones too. */
-  gtk_widget_activate_action (GTK_WIDGET (self), palang_palette_item_get_id (item), NULL);
-}
-
-/* Only one palette at a time. Pressing Ctrl+Shift+P (or Ctrl+P) while its
- * palette is open keeps it as it is; the other shortcut switches to the
- * other palette. Returns: TRUE if the palette of @action is already open. */
-static gboolean
-palette_is_open (PalangWindow *self,
-                 const char   *action)
-{
-  if (self->palette == NULL)
-    return FALSE;
-
-  if (g_str_equal (self->palette_action, action))
-    return TRUE;
-
-  adw_dialog_close (ADW_DIALOG (self->palette));
-  return FALSE;
-}
-
-/* "closed" may come after a new palette was shown (the old one fades
- * out), so forget only the palette that actually closed. */
-static void
-on_palette_closed (AdwDialog    *dialog,
-                   PalangWindow *self)
-{
-  if (ADW_DIALOG (self->palette) == dialog)
-    self->palette = NULL;
-}
-
-static void
-show_palette (PalangWindow  *self,
-              PalangPalette *palette,
-              const char    *action)
-{
-  self->palette = palette;
-  self->palette_action = action;
-  g_signal_connect (palette, "closed", G_CALLBACK (on_palette_closed), self);
-  adw_dialog_present (ADW_DIALOG (palette), GTK_WIDGET (self));
-}
-
-/* Ctrl+Shift+P: every command of the app's command table, with its
- * shortcut as the subtitle. */
-static void
-command_palette_action (GtkWidget  *widget,
-                        const char *action_name,
-                        GVariant   *parameter)
-{
-  PalangWindow *self = PALANG_WINDOW (widget);
-  GtkApplication *app = gtk_window_get_application (GTK_WINDOW (self));
-  g_autoptr (GListStore) items = g_list_store_new (PALANG_TYPE_PALETTE_ITEM);
-  GListModel *commands;
-  PalangPalette *palette;
-
-  if (app == NULL || palette_is_open (self, "win.command-palette"))
-    return;
-
-  commands = palang_application_get_commands (PALANG_APPLICATION (app));
-  for (guint i = 0; i < g_list_model_get_n_items (commands); i++)
-    {
-      g_autoptr (PalangCommand) command = g_list_model_get_item (commands, i);
-      g_autoptr (PalangPaletteItem) item = NULL;
-      g_autofree char *shortcut = NULL;
-      const char *accel = palang_command_get_accel (command);
-
-      /* Listing the palette in itself would be odd. */
-      if (g_str_equal (palang_command_get_action_name (command), "win.command-palette"))
-        continue;
-
-      /* "<Control><Alt>s" → "Ctrl+Alt+S", as the user sees it. */
-      if (accel != NULL)
-        {
-          guint key;
-          GdkModifierType modifiers;
-
-          if (gtk_accelerator_parse (accel, &key, &modifiers))
-            shortcut = gtk_accelerator_get_label (key, modifiers);
-        }
-
-      item = palang_palette_item_new (palang_command_get_action_name (command),
-                                      palang_command_get_title (command), shortcut, NULL);
-      g_list_store_append (items, item);
-    }
-
-  palette = palang_palette_new ("Run a command");
-  palang_palette_set_items (palette, G_LIST_MODEL (items));
-  g_signal_connect (palette, "item-activated", G_CALLBACK (on_command_chosen), self);
-  show_palette (self, palette, "win.command-palette");
-}
-
-static void
-on_file_chosen (PalangPalette     *palette,
-                PalangPaletteItem *item,
-                PalangWindow      *self)
-{
-  g_autoptr (GFile) file = NULL;
-
-  if (palang_window_get_folder (self) == NULL)
-    return;
-
-  /* The id is the path relative to the folder. */
-  file = g_file_resolve_relative_path (palang_window_get_folder (self),
-                                       palang_palette_item_get_id (item));
-  palang_window_open_file (self, file);
-}
-
-/* The project's files have been listed: show them in the palette, by name,
- * with the folder they're in as the subtitle. Typing matches the whole
- * relative path, so "app/win" finds src/app/palang-window.c. */
-static void
-on_quick_open_listed (GObject      *source,
-                      GAsyncResult *result,
-                      gpointer      user_data)
-{
-  g_autoptr (PalangPalette) palette = user_data;  /* reference taken in quick_open_action */
-  g_autoptr (GError) error = NULL;
-  g_auto (GStrv) paths = palang_search_list_files_finish (result, &error);
-  g_autoptr (GListStore) items = NULL;
-
-  if (paths == NULL)
-    {
-      palang_palette_set_status (palette, error->message);
-      return;
-    }
-
-  items = g_list_store_new (PALANG_TYPE_PALETTE_ITEM);
-  for (guint i = 0; paths[i] != NULL; i++)
-    {
-      g_autofree char *shown = g_filename_display_name (paths[i]);
-      g_autofree char *name = g_path_get_basename (shown);
-      g_autofree char *folder = g_path_get_dirname (shown);
-      g_autoptr (PalangPaletteItem) item = NULL;
-
-      item = palang_palette_item_new (paths[i], name,
-                                      g_str_equal (folder, ".") ? NULL : folder,
-                                      shown);
-      g_list_store_append (items, item);
-    }
-
-  palang_palette_set_status (palette, paths[0] == NULL ? "No files in this folder." : NULL);
-  palang_palette_set_items (palette, G_LIST_MODEL (items));
-}
-
-/* Ctrl+P: open a file of the project folder by typing part of its name. */
-static void
-quick_open_action (GtkWidget  *widget,
-                   const char *action_name,
-                   GVariant   *parameter)
-{
-  PalangWindow *self = PALANG_WINDOW (widget);
-  GFile *folder = palang_window_get_folder (self);
-  PalangPalette *palette;
-
-  if (palette_is_open (self, "win.quick-open"))
-    return;
-
-  if (folder == NULL)
-    {
-      show_toast (self, "Open a folder first (Ctrl+Shift+O) to find files in it.");
-      return;
-    }
-
-  palette = palang_palette_new ("Open a file in the folder");
-  palang_palette_set_status (palette, "Listing files…");
-  g_signal_connect (palette, "item-activated", G_CALLBACK (on_file_chosen), self);
-  show_palette (self, palette, "win.quick-open");
-
-  /* Listing runs in the background; the palette is already open. */
-  palang_search_list_files_async (folder, NULL, on_quick_open_listed, g_object_ref (palette));
-}
-
 /* Find / Replace / Go to line: forwarded to the editor in the current tab. */
 
 static void
@@ -1619,10 +1131,6 @@ palang_window_class_init (PalangWindowClass *klass)
   gtk_widget_class_install_action (widget_class, "win.open", NULL, open_action);
   gtk_widget_class_install_action (widget_class, "win.open-folder", NULL, open_folder_action);
   gtk_widget_class_install_action (widget_class, "win.toggle-sidebar", NULL, toggle_sidebar_action);
-  gtk_widget_class_install_action (widget_class, "win.toggle-panel", NULL, toggle_panel_action);
-  gtk_widget_class_install_action (widget_class, "win.search-project", NULL, search_project_action);
-  gtk_widget_class_install_action (widget_class, "win.command-palette", NULL, command_palette_action);
-  gtk_widget_class_install_action (widget_class, "win.quick-open", NULL, quick_open_action);
   gtk_widget_class_install_action (widget_class, "win.save", NULL, save_action);
   gtk_widget_class_install_action (widget_class, "win.save-as", NULL, save_as_action);
   gtk_widget_class_install_action (widget_class, "win.save-all", NULL, save_all_action);
@@ -1634,21 +1142,16 @@ palang_window_class_init (PalangWindowClass *klass)
   gtk_widget_class_install_action (widget_class, "win.find-next", NULL, find_next_action);
   gtk_widget_class_install_action (widget_class, "win.find-previous", NULL, find_next_action);
   gtk_widget_class_install_action (widget_class, "win.go-to-line", NULL, go_to_line_action);
+  _palang_window_class_init_panel (widget_class);
+  _palang_window_class_init_palette (widget_class);
 }
 
 static void
 palang_window_init (PalangWindow *self)
 {
-  GtkEventController *keys;
-
-  self->panel_height = DEFAULT_PANEL_HEIGHT;
-
   /* Gives keys to the terminal before the app's shortcuts see them; see
-   * on_window_key_pressed. */
-  keys = gtk_event_controller_key_new ();
-  gtk_event_controller_set_propagation_phase (keys, GTK_PHASE_CAPTURE);
-  g_signal_connect (keys, "key-pressed", G_CALLBACK (on_window_key_pressed), self);
-  gtk_widget_add_controller (GTK_WIDGET (self), keys);
+   * on_window_key_pressed in palang-window-panel.c. */
+  _palang_window_init_key_routing (self);
 
   gtk_widget_init_template (GTK_WIDGET (self));
 
@@ -1658,11 +1161,8 @@ palang_window_init (PalangWindow *self)
                     G_CALLBACK (on_n_pages_changed), self);
   g_signal_connect (self->tab_view, "close-page",
                     G_CALLBACK (on_close_page), self);
-  g_signal_connect (self->panel, "notify::visible",
-                    G_CALLBACK (on_panel_visible_changed), self);
 
-  add_terminal_page (self);
-  add_search_page (self);
+  _palang_window_init_panel (self);
 
   /* Start in the "no tabs" state. */
   on_n_pages_changed (self->tab_view, NULL, self);

@@ -95,7 +95,8 @@ shell starts.
 application's shortcuts act before the focused widget ever sees the key. So
 at first, Ctrl+W in bash closed an editor tab instead of deleting a word.
 The fix is in the window: a key controller added in `palang_window_init`
-runs before the app's shortcuts. When the focus is in the terminal, it
+(since 2b.0: `_palang_window_init_key_routing` in
+`src/app/palang-window-panel.c`) runs before the app's shortcuts. When the focus is in the terminal, it
 hands the key to the terminal (`palang_terminal_forward_key`, which uses
 `gtk_event_controller_key_forward`) and stops it there. Only the commands
 in `commands_kept_in_terminal` (toggle panel, sidebar, project search,
