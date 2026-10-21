@@ -172,7 +172,9 @@ the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
 13. **Layout timing:** a text view created a moment ago can't scroll to a
     line yet, and a newly shown `GtkPaned` child gets its *minimum* size.
     Retry or apply on a tick callback (`gtk_widget_add_tick_callback`)
-    once the widget has a size.
+    once the widget has a size. Line positions in a new text view are
+    *estimates* for a few frames: "the cursor is visible" can be true and
+    then stop being true; wait until it stays so (`palang-editor.c`).
 14. **GTK 4.14 list section headers:** the first header stays scrolled out
     of view when rows arrive; we show headings inside rows instead.
 15. **VTE emits `child-exited` while being destroyed:** disconnect from it
@@ -195,9 +197,9 @@ Rust; the Problems panel page comes later. Follow the 2b step table there.
 `palang-window-lsp.c`, tests with `tests/fake-lsp-server.c`), 2b.2
 (document sync: `PalangLspDocument`, UTF-16 positions in
 `palang-lsp-position.c`) and 2b.3 (diagnostics: underlines, gutter icons,
-hover popup via `PalangLspHoverProvider`) are done; next is 2b.4, go to
-definition (F12 / Ctrl+click → `palang_window_open_file_at ()`), then
-2b.5, the end of the phase.
+hover popup via `PalangLspHoverProvider`) and 2b.4 (go to definition: F12,
+Ctrl+click) are done; next is 2b.5, the end of the phase (PROGRESS,
+MANUAL_TESTS, `docs/03-*.md`, `docs/interfaces.md`).
 
 - `clangd` is installed; meson's `build/compile_commands.json` makes
   Palang's own code the first test project.

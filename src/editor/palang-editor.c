@@ -29,6 +29,7 @@ struct _PalangEditor
    * (see keep_scrolling_to_cursor). */
   guint scroll_tick_id;
   guint scroll_frames_left;
+  guint scroll_visible_frames;  /* frames in a row the cursor was visible */
 };
 
 G_DEFINE_FINAL_TYPE (PalangEditor, palang_editor, ADW_TYPE_BIN)
@@ -337,14 +338,35 @@ parse_go_to_spec (const char *spec,
 }
 
 /* Scrolls so the cursor is in view, a third from the top. */
+/* Puts the cursor's line about a third from the top of the view.
+ * Sideways, it scrolls only if the cursor would otherwise be out of view:
+ * code reads best from the start of its lines. (gtk_text_view_scroll_to_mark
+ * with an alignment always aligns both ways.)
+ *
+ * A text view's scroll position is the value of its two GtkAdjustments,
+ * in the same units as gtk_text_view_get_iter_location (); setting a
+ * value out of range clamps it to the nearest valid one. */
 static void
 scroll_to_cursor (PalangEditor *self)
 {
+  GtkTextView *view = GTK_TEXT_VIEW (self->view);
   GtkTextBuffer *buffer = GTK_TEXT_BUFFER (self->document);
+  GtkAdjustment *vertical = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (view));
+  GtkAdjustment *horizontal = gtk_scrollable_get_hadjustment (GTK_SCROLLABLE (view));
+  GtkTextIter cursor;
+  GdkRectangle location;
+  GdkRectangle visible;
 
-  gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (self->view),
-                                gtk_text_buffer_get_insert (buffer),
-                                0, TRUE, 0, 0.3);
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+  gtk_text_view_get_iter_location (view, &cursor, &location);
+  gtk_text_view_get_visible_rect (view, &visible);
+
+  gtk_adjustment_set_value (vertical, location.y - visible.height * 0.3);
+
+  if (location.x + location.width < visible.width)
+    gtk_adjustment_set_value (horizontal, 0);
+  else
+    gtk_adjustment_set_value (horizontal, location.x - visible.width / 2.0);
 }
 
 static gboolean
@@ -366,8 +388,11 @@ cursor_is_visible (PalangEditor *self)
 
 /* Scrolling a text view right after it was created (a tab opened a moment
  * ago) doesn't work: it learns its own height, and then the height of its
- * lines, only over its first few frames. So we try again on each frame
- * until the cursor is visible, for about a second at most.
+ * lines, only over its first few frames. Until then line positions are
+ * estimates, so the cursor can look visible and then move out of view when
+ * the real heights arrive. So we scroll again on each frame until the
+ * cursor has stayed visible for 10 frames in a row, for about a second at
+ * most.
  *
  * A "tick callback" runs before every frame GTK draws for the widget,
  * until it returns G_SOURCE_REMOVE. */
@@ -380,12 +405,16 @@ keep_scrolling_to_cursor (GtkWidget     *view,
 
   if (gtk_widget_get_height (view) > 0)
     {
-      if (cursor_is_visible (self))
+      if (!cursor_is_visible (self))
+        {
+          self->scroll_visible_frames = 0;
+          scroll_to_cursor (self);
+        }
+      else if (++self->scroll_visible_frames >= 10)
         {
           self->scroll_tick_id = 0;
           return G_SOURCE_REMOVE;
         }
-      scroll_to_cursor (self);
     }
 
   if (--self->scroll_frames_left == 0)
@@ -431,6 +460,7 @@ palang_editor_go_to (PalangEditor *self,
   if (self->scroll_tick_id != 0)
     gtk_widget_remove_tick_callback (GTK_WIDGET (self->view), self->scroll_tick_id);
   self->scroll_frames_left = 60;
+  self->scroll_visible_frames = 0;
   self->scroll_tick_id = gtk_widget_add_tick_callback (GTK_WIDGET (self->view),
                                                        keep_scrolling_to_cursor, self, NULL);
   return TRUE;

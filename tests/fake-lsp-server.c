@@ -6,7 +6,8 @@
  *
  *   fake-lsp-server [--log FILE] [--crash-after-initialized] [--ignore-shutdown]
  *                   [--refuse-initialize] [--full-sync] [--crash-on-change]
- *                   [--diagnose]
+ *                   [--diagnose] [--definition LINE:CHARACTER]
+ *                   [--definition-link] [--slow-definition]
  *
  *   --log FILE                 append every message received to FILE, one
  *                              line each: the method, a space, the params
@@ -25,9 +26,15 @@
  *                              publish an error for every "bad" and a
  *                              warning for every "meh" in the text; use
  *                              with --full-sync so it always has the text
+ *   --definition LINE:CHAR     answer textDocument/definition with that
+ *                              position in the same document (without it:
+ *                              null, "nothing found")
+ *   --definition-link          answer as an array of LocationLink instead
+ *                              of one Location
+ *   --slow-definition          answer it after 300 ms
  *
- * Requests it answers: "initialize", "shutdown", and "fake/echo", which
- * replies with its params.
+ * Requests it answers: "initialize", "shutdown", "textDocument/definition"
+ * (see --definition), and "fake/echo", which replies with its params.
  */
 
 #include "config.h"
@@ -47,6 +54,9 @@ static gboolean refuse_initialize;
 static gboolean full_sync;
 static gboolean crash_on_change;
 static gboolean diagnose;
+static char *definition;  /* "LINE:CHAR" */
+static gboolean definition_link;
+static gboolean slow_definition;
 static GMainLoop *main_loop;
 
 static void
@@ -72,6 +82,59 @@ log_message (const char *method,
     return;
   fprintf (file, "%s %s\n", method, json != NULL ? json : "null");
   fclose (file);
+}
+
+/* Returns: (transfer full) (nullable): the answer to a definition request
+ * about the document @uri, per --definition and --definition-link. */
+static GVariant *
+build_definition (const char *uri)
+{
+  gint64 line = 0, character = 0;
+
+  if (definition == NULL || sscanf (definition, "%" G_GINT64_FORMAT ":%" G_GINT64_FORMAT,
+                                    &line, &character) != 2)
+    return NULL;
+
+  if (definition_link)
+    return JSONRPC_MESSAGE_NEW_ARRAY (
+      "{",
+        "targetUri", JSONRPC_MESSAGE_PUT_STRING (uri),
+        "targetRange", "{",
+          "start", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (0), "character", JSONRPC_MESSAGE_PUT_INT64 (0), "}",
+          "end", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (line + 1), "character", JSONRPC_MESSAGE_PUT_INT64 (0), "}",
+        "}",
+        "targetSelectionRange", "{",
+          "start", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (line), "character", JSONRPC_MESSAGE_PUT_INT64 (character), "}",
+          "end", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (line), "character", JSONRPC_MESSAGE_PUT_INT64 (character + 1), "}",
+        "}",
+      "}");
+
+  return JSONRPC_MESSAGE_NEW (
+    "uri", JSONRPC_MESSAGE_PUT_STRING (uri),
+    "range", "{",
+      "start", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (line), "character", JSONRPC_MESSAGE_PUT_INT64 (character), "}",
+      "end", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (line), "character", JSONRPC_MESSAGE_PUT_INT64 (character + 1), "}",
+    "}");
+}
+
+/* A reply sent later (--slow-definition). */
+typedef struct {
+  JsonrpcClient *rpc;    /* owned */
+  GVariant      *id;     /* owned */
+  GVariant      *reply;  /* owned, nullable */
+} LateReply;
+
+static gboolean
+send_late_reply (gpointer user_data)
+{
+  LateReply *late = user_data;
+
+  jsonrpc_client_reply_async (late->rpc, late->id, late->reply, NULL, NULL, NULL);
+  g_object_unref (late->rpc);
+  g_variant_unref (late->id);
+  g_clear_pointer (&late->reply, g_variant_unref);
+  g_free (late);
+  return G_SOURCE_REMOVE;
 }
 
 static gboolean
@@ -104,6 +167,26 @@ on_handle_call (JsonrpcClient *rpc,
     {
       if (!ignore_shutdown)
         jsonrpc_client_reply_async (rpc, id, NULL, NULL, NULL, NULL);
+    }
+  else if (g_str_equal (method, "textDocument/definition"))
+    {
+      const char *uri = NULL;
+      g_autoptr (GVariant) reply = NULL;
+
+      JSONRPC_MESSAGE_PARSE (params, "textDocument", "{", "uri", JSONRPC_MESSAGE_GET_STRING (&uri), "}");
+      reply = build_definition (uri);
+
+      if (slow_definition)
+        {
+          LateReply *late = g_new0 (LateReply, 1);
+
+          late->rpc = g_object_ref (rpc);
+          late->id = g_variant_ref (id);
+          late->reply = g_steal_pointer (&reply);
+          g_timeout_add (300, send_late_reply, late);
+        }
+      else
+        jsonrpc_client_reply_async (rpc, id, reply, NULL, NULL, NULL);
     }
   else if (g_str_equal (method, "fake/echo"))
     {
@@ -269,6 +352,9 @@ main (int   argc,
     { "full-sync", 0, 0, G_OPTION_ARG_NONE, &full_sync, NULL, NULL },
     { "crash-on-change", 0, 0, G_OPTION_ARG_NONE, &crash_on_change, NULL, NULL },
     { "diagnose", 0, 0, G_OPTION_ARG_NONE, &diagnose, NULL, NULL },
+    { "definition", 0, 0, G_OPTION_ARG_STRING, &definition, NULL, NULL },
+    { "definition-link", 0, 0, G_OPTION_ARG_NONE, &definition_link, NULL, NULL },
+    { "slow-definition", 0, 0, G_OPTION_ARG_NONE, &slow_definition, NULL, NULL },
     { NULL }
   };
   g_autoptr (GOptionContext) context = g_option_context_new (NULL);
@@ -302,5 +388,6 @@ main (int   argc,
   g_main_loop_unref (main_loop);
 
   g_free (log_path);
+  g_free (definition);
   return 0;
 }

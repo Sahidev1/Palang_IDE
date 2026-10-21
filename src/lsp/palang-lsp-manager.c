@@ -17,11 +17,14 @@
 
 #include "config.h"
 
+#include <jsonrpc-glib.h>
+
 #include "palang-lsp-diagnostics.h"
 #include "palang-lsp-document.h"
 #include "palang-lsp-hover-provider.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
+#include "palang-lsp-position.h"
 
 struct _PalangLspManager
 {
@@ -350,6 +353,224 @@ palang_lsp_manager_get_lsp_document (PalangLspManager *self,
   g_return_val_if_fail (PALANG_IS_DOCUMENT (document), NULL);
 
   return find_lsp_document (self, document, NULL);
+}
+
+/* ---- Go to definition --------------------------------------------------- */
+
+/* What a definition request remembers until the answer comes. */
+typedef struct {
+  PalangLspDocument *lsp_document;  /* owned */
+  gint64             version;       /* of the text the question was about */
+} DefinitionRequest;
+
+static void
+definition_request_free (DefinitionRequest *request)
+{
+  g_clear_object (&request->lsp_document);
+  g_free (request);
+}
+
+/* The result handed to _finish (). */
+typedef struct {
+  GFile *file;  /* owned, nullable */
+  guint  line;
+  guint  column;
+} DefinitionResult;
+
+static void
+definition_result_free (DefinitionResult *result)
+{
+  g_clear_object (&result->file);
+  g_free (result);
+}
+
+/* Reads one Location ({uri, range}) or LocationLink ({targetUri,
+ * targetSelectionRange, …}) into @uri, @line and @character. */
+static gboolean
+parse_location (GVariant    *location,
+                const char **uri,
+                gint64      *line,
+                gint64      *character)
+{
+  /* A LocationLink's "targetSelectionRange" is the name itself, its
+   * "targetRange" the whole definition; the name is where to go. */
+  if (JSONRPC_MESSAGE_PARSE (location,
+        "uri", JSONRPC_MESSAGE_GET_STRING (uri),
+        "range", "{",
+          "start", "{",
+            "line", JSONRPC_MESSAGE_GET_INT64 (line),
+            "character", JSONRPC_MESSAGE_GET_INT64 (character),
+          "}",
+        "}"))
+    return TRUE;
+
+  return JSONRPC_MESSAGE_PARSE (location,
+           "targetUri", JSONRPC_MESSAGE_GET_STRING (uri),
+           "targetSelectionRange", "{",
+             "start", "{",
+               "line", JSONRPC_MESSAGE_GET_INT64 (line),
+               "character", JSONRPC_MESSAGE_GET_INT64 (character),
+             "}",
+           "}");
+}
+
+/* Returns: (transfer none) (nullable): the open document showing @file. */
+static PalangLspDocument *
+find_lsp_document_for_file (PalangLspManager *self,
+                            GFile            *file)
+{
+  for (guint i = 0; i < self->documents->len; i++)
+    {
+      PalangLspDocument *lsp_document = g_ptr_array_index (self->documents, i);
+      GFile *document_file = palang_document_get_file (palang_lsp_document_get_document (lsp_document));
+
+      if (document_file != NULL && g_file_equal (document_file, file))
+        return lsp_document;
+    }
+
+  return NULL;
+}
+
+static void
+on_definition_replied (GObject      *source,
+                       GAsyncResult *result,
+                       gpointer      user_data)
+{
+  g_autoptr (GTask) task = user_data;
+  PalangLspManager *self = g_task_get_source_object (task);
+  DefinitionRequest *request = g_task_get_task_data (task);
+  g_autoptr (GVariant) reply = NULL;
+  g_autoptr (GVariant) location = NULL;
+  g_autoptr (GError) error = NULL;
+  DefinitionResult *found;
+  PalangLspDocument *target;
+  const char *uri = NULL;
+  gint64 line = 0, character = 0;
+
+  reply = palang_lsp_client_call_finish (PALANG_LSP_CLIENT (source), result, &error);
+  if (error != NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  if (palang_lsp_document_get_version (request->lsp_document) != request->version)
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_CANCELLED,
+                               "The text changed while waiting for the server");
+      return;
+    }
+
+  /* The answer is one Location, an array of them (we take the first), or
+   * null (reply == NULL): nothing found. Arrays arrive as "av". */
+  if (reply != NULL && g_variant_is_of_type (reply, G_VARIANT_TYPE_VARDICT))
+    location = g_variant_ref (reply);
+  else if (reply != NULL && g_variant_is_container (reply) && g_variant_n_children (reply) > 0)
+    {
+      location = g_variant_get_child_value (reply, 0);
+      if (g_variant_is_of_type (location, G_VARIANT_TYPE_VARIANT))
+        {
+          GVariant *unboxed = g_variant_get_variant (location);
+
+          g_variant_unref (location);
+          location = unboxed;
+        }
+    }
+
+  found = g_new0 (DefinitionResult, 1);
+  if (location != NULL && g_variant_is_of_type (location, G_VARIANT_TYPE_VARDICT) &&
+      parse_location (location, &uri, &line, &character))
+    {
+      found->file = g_file_new_for_uri (uri);
+      found->line = (guint) MAX (line, 0);
+      found->column = (guint) MAX (character, 0);
+
+      /* If the file is open, convert the server's UTF-16 count into
+       * characters exactly. */
+      target = find_lsp_document_for_file (self, found->file);
+      if (target != NULL)
+        {
+          GtkTextIter iter;
+
+          palang_lsp_iter_from_position (GTK_TEXT_BUFFER (palang_lsp_document_get_document (target)),
+                                         found->line, found->column, &iter);
+          found->line = gtk_text_iter_get_line (&iter);
+          found->column = gtk_text_iter_get_line_offset (&iter);
+        }
+    }
+
+  g_task_return_pointer (task, found, (GDestroyNotify) definition_result_free);
+}
+
+void
+palang_lsp_manager_find_definition_async (PalangLspManager    *self,
+                                          PalangDocument      *document,
+                                          const GtkTextIter   *iter,
+                                          GCancellable        *cancellable,
+                                          GAsyncReadyCallback  callback,
+                                          gpointer             user_data)
+{
+  g_autoptr (GTask) task = NULL;
+  g_autoptr (GVariant) params = NULL;
+  PalangLspDocument *lsp_document;
+  PalangLspClient *client;
+  DefinitionRequest *request;
+  guint line, character;
+
+  g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
+  g_return_if_fail (PALANG_IS_DOCUMENT (document));
+  g_return_if_fail (iter != NULL);
+
+  task = g_task_new (self, cancellable, callback, user_data);
+  lsp_document = find_lsp_document (self, document, NULL);
+  client = lsp_document != NULL ? palang_lsp_document_get_client (lsp_document) : NULL;
+
+  if (client == NULL || !palang_lsp_document_is_open (lsp_document))
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
+                               "No language server has this file open");
+      return;
+    }
+
+  request = g_new0 (DefinitionRequest, 1);
+  request->lsp_document = g_object_ref (lsp_document);
+  request->version = palang_lsp_document_get_version (lsp_document);
+  g_task_set_task_data (task, request, (GDestroyNotify) definition_request_free);
+
+  palang_lsp_position_from_iter (iter, &line, &character);
+  params = JSONRPC_MESSAGE_NEW (
+    "textDocument", "{",
+      "uri", JSONRPC_MESSAGE_PUT_STRING (palang_lsp_document_get_uri (lsp_document)),
+    "}",
+    "position", "{",
+      "line", JSONRPC_MESSAGE_PUT_INT64 (line),
+      "character", JSONRPC_MESSAGE_PUT_INT64 (character),
+    "}");
+  palang_lsp_client_call_async (client, "textDocument/definition", params, cancellable,
+                                on_definition_replied, g_steal_pointer (&task));
+}
+
+gboolean
+palang_lsp_manager_find_definition_finish (PalangLspManager  *self,
+                                           GAsyncResult      *result,
+                                           GFile            **file,
+                                           guint             *line,
+                                           guint             *column,
+                                           GError           **error)
+{
+  DefinitionResult *found;
+
+  g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+
+  found = g_task_propagate_pointer (G_TASK (result), error);
+  if (found == NULL)
+    return FALSE;
+
+  *file = g_steal_pointer (&found->file);
+  *line = found->line;
+  *column = found->column;
+  definition_result_free (found);
+  return TRUE;
 }
 
 /* ---- Folder ------------------------------------------------------------- */

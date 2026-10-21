@@ -101,7 +101,8 @@ void _palang_window_class_init_palette (GtkWidgetClass *widget_class);
 
 /* palang-window-lsp.c */
 
-/* Installs win.restart-language-servers. Called from class_init. */
+/* Installs win.restart-language-servers and win.go-to-definition. Called
+ * from class_init. */
 void _palang_window_class_init_lsp     (GtkWidgetClass *widget_class);
 
 /* Creates the language server manager and connects it to the file tree and

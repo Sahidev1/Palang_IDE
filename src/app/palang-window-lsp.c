@@ -11,8 +11,13 @@
  * The manager starts the servers those documents need. When one can't be
  * started (not installed, keeps crashing), its message is shown as a
  * toast with a "Details" button (a toast has one line; the message can be
- * longer, and may hold a command to copy). The action win.restart-language-servers starts them all again,
- * e.g. after installing a missing server.
+ * longer, and may hold a command to copy). The action
+ * win.restart-language-servers starts them all again, e.g. after
+ * installing a missing server.
+ *
+ * Go to definition: win.go-to-definition (F12) for the name at the
+ * cursor, or Ctrl+click on a name. The server says where it is defined,
+ * and the window opens that file there.
  */
 
 #include "config.h"
@@ -25,6 +30,115 @@ editor_for_page (AdwTabPage *page)
   return PALANG_EDITOR (adw_tab_page_get_child (page));
 }
 
+/* ---- Go to definition --------------------------------------------------- */
+
+static void
+on_definition_found (GObject      *source,
+                     GAsyncResult *result,
+                     gpointer      user_data)
+{
+  g_autoptr (PalangWindow) self = user_data;  /* reference taken in go_to_definition */
+  g_autoptr (GFile) file = NULL;
+  g_autoptr (GError) error = NULL;
+  guint line, column;
+
+  if (!palang_lsp_manager_find_definition_finish (PALANG_LSP_MANAGER (source), result,
+                                                  &file, &line, &column, &error))
+    {
+      /* Cancelled: the text changed meanwhile; the user has moved on. */
+      if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+        _palang_window_show_toast (self, error->message);
+      return;
+    }
+
+  if (file == NULL)
+    {
+      _palang_window_show_toast (self, "No definition found");
+      return;
+    }
+
+  /* The window counts lines and columns from 1. */
+  palang_window_open_file_at (self, file, line + 1, column + 1);
+}
+
+/* Asks where the name at the cursor of @editor is defined. */
+static void
+go_to_definition (PalangWindow *self,
+                  PalangEditor *editor)
+{
+  PalangDocument *document = palang_editor_get_document (editor);
+  PalangLspClient *client = palang_lsp_manager_get_client (self->lsp_manager, document);
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (document);
+  GtkTextIter cursor;
+
+  if (client == NULL)
+    {
+      _palang_window_show_toast (self, "No language server for this file");
+      return;
+    }
+  if (!palang_lsp_client_is_ready (client))
+    {
+      g_autofree char *message =
+        g_strdup_printf ("The %s language server isn't running yet",
+                         palang_lsp_client_get_title (client));
+
+      _palang_window_show_toast (self, message);
+      return;
+    }
+
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+  palang_lsp_manager_find_definition_async (self->lsp_manager, document, &cursor, NULL,
+                                            on_definition_found, g_object_ref (self));
+}
+
+static void
+go_to_definition_action (GtkWidget  *widget,
+                         const char *action_name,
+                         GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  PalangEditor *editor = palang_window_get_active_editor (self);
+
+  if (editor != NULL)
+    go_to_definition (self, editor);
+}
+
+/* A click in an editor's text. With Ctrl held, it puts the cursor where
+ * the click was and goes to the definition of the name there. The
+ * gesture is "claimed", so the text view doesn't also start a selection;
+ * a click without Ctrl is "denied" and handled by the view as usual. */
+static void
+on_text_pressed (GtkGestureClick *gesture,
+                 int              n_press,
+                 double           x,
+                 double           y,
+                 PalangWindow    *self)
+{
+  GtkWidget *view = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+  GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
+  PalangEditor *editor = PALANG_EDITOR (gtk_widget_get_ancestor (view, PALANG_TYPE_EDITOR));
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+  GtkTextIter iter;
+  int buffer_x, buffer_y;
+
+  if ((state & GDK_CONTROL_MASK) == 0 || n_press != 1 || editor == NULL)
+    {
+      gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
+      return;
+    }
+
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+
+  /* Widget coordinates → buffer coordinates (they differ once scrolled) →
+   * the position in the text. */
+  gtk_text_view_window_to_buffer_coords (GTK_TEXT_VIEW (view), GTK_TEXT_WINDOW_WIDGET,
+                                         (int) x, (int) y, &buffer_x, &buffer_y);
+  gtk_text_view_get_iter_at_location (GTK_TEXT_VIEW (view), &iter, buffer_x, buffer_y);
+  gtk_text_buffer_place_cursor (buffer, &iter);
+
+  go_to_definition (self, editor);
+}
+
 /* "page-attached" and "page-detached" are AdwTabView's signals for a tab
  * being added and removed, however it happens (opened, restored, closed). */
 static void
@@ -35,8 +149,18 @@ on_page_attached (AdwTabView   *tab_view,
 {
   PalangEditor *editor = editor_for_page (page);
 
+  GtkGesture *click;
+
   palang_lsp_manager_add_document (self->lsp_manager, palang_editor_get_document (editor));
   palang_lsp_manager_add_view (self->lsp_manager, palang_editor_get_view (editor));
+
+  /* Ctrl+click: in the "capture" phase, so it sees the click before the
+   * text view's own click handling. */
+  click = gtk_gesture_click_new ();
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), GDK_BUTTON_PRIMARY);
+  gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (click), GTK_PHASE_CAPTURE);
+  g_signal_connect (click, "pressed", G_CALLBACK (on_text_pressed), self);
+  gtk_widget_add_controller (GTK_WIDGET (palang_editor_get_view (editor)), GTK_EVENT_CONTROLLER (click));
 }
 
 static void
@@ -98,6 +222,8 @@ _palang_window_class_init_lsp (GtkWidgetClass *widget_class)
 {
   gtk_widget_class_install_action (widget_class, "win.restart-language-servers", NULL,
                                    restart_language_servers_action);
+  gtk_widget_class_install_action (widget_class, "win.go-to-definition", NULL,
+                                   go_to_definition_action);
 }
 
 void

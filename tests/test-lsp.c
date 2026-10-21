@@ -1113,6 +1113,151 @@ test_diagnostics_stale_dropped (Fixture *fixture, gconstpointer data)
   dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
 }
 
+/* ---- Go to definition --------------------------------------------------- */
+
+typedef struct {
+  gboolean  done;
+  gboolean  ok;
+  GFile    *file;
+  guint     line;
+  guint     column;
+  GError   *error;
+} DefinitionAnswer;
+
+static void
+on_definition_found (GObject      *source,
+                     GAsyncResult *result,
+                     gpointer      user_data)
+{
+  DefinitionAnswer *answer = user_data;
+
+  answer->ok = palang_lsp_manager_find_definition_finish (PALANG_LSP_MANAGER (source), result,
+                                                          &answer->file, &answer->line,
+                                                          &answer->column, &answer->error);
+  answer->done = TRUE;
+}
+
+/* Asks for the definition at @line, @offset (GTK counting) and waits. */
+static void
+find_definition (PalangLspManager *manager,
+                 PalangDocument   *document,
+                 int               line,
+                 int               offset,
+                 DefinitionAnswer *answer)
+{
+  GtkTextIter iter;
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, line, offset);
+  palang_lsp_manager_find_definition_async (manager, document, &iter, NULL,
+                                            on_definition_found, answer);
+  wait_for_flag (&answer->done, "the definition");
+}
+
+static void
+clear_answer (DefinitionAnswer *answer)
+{
+  g_clear_object (&answer->file);
+  g_clear_error (&answer->error);
+}
+
+/* The server answers with a Location (or LocationLinks, per @data): the
+ * position comes back in characters. The target line starts with 😀, so
+ * the server's character 3 is GTK's 2. */
+static void
+test_definition_found (Fixture *fixture, gconstpointer data)
+{
+  const char *option = data;
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, option);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c",
+                                                       "\xf0\x9f\x98\x80 target\nuse target\n");
+  g_autoptr (JsonNode) asked = NULL;
+  DefinitionAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  find_definition (manager, document, 1, 5, &answer);
+  g_assert_no_error (answer.error);
+  g_assert_true (answer.ok);
+  g_assert_nonnull (answer.file);
+  g_assert_true (g_file_equal (answer.file, palang_document_get_file (document)));
+  g_assert_cmpuint (answer.line, ==, 0);
+  g_assert_cmpuint (answer.column, ==, 2);
+
+  asked = get_logged_params (fixture, "textDocument/definition", 0);
+  g_assert_cmpint (get_int (asked, "$.position.line"), ==, 1);
+  g_assert_cmpint (get_int (asked, "$.position.character"), ==, 5);
+
+  clear_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* The server found nothing (null): no file, no error. */
+static void
+test_definition_nothing (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "int a;\n");
+  DefinitionAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  find_definition (manager, document, 0, 4, &answer);
+  g_assert_no_error (answer.error);
+  g_assert_true (answer.ok);
+  g_assert_null (answer.file);
+
+  clear_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* The text changes before the (slow) answer comes: it is dropped. */
+static void
+test_definition_stale (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path,
+                                                      "--definition 0:0 --slow-definition");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "int a;\n");
+  DefinitionAnswer answer = { 0 };
+  GtkTextIter iter;
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, 0, 4);
+  palang_lsp_manager_find_definition_async (manager, document, &iter, NULL,
+                                            on_definition_found, &answer);
+  insert_at (document, 0, 0, "x");  /* before the answer arrives */
+  wait_for_flag (&answer.done, "the definition");
+
+  g_assert_false (answer.ok);
+  g_assert_error (answer.error, G_IO_ERROR, G_IO_ERROR_CANCELLED);
+
+  clear_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* A document no server handles: a clear error right away. */
+static void
+test_definition_no_server (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
+  g_autoptr (PalangLspManager) manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = new_document ("markdown");
+  DefinitionAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  find_definition (manager, document, 0, 0, &answer);
+  g_assert_false (answer.ok);
+  g_assert_error (answer.error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED);
+
+  clear_answer (&answer);
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -1143,6 +1288,13 @@ main (int   argc,
   ADD_TEST ("/lsp/sync/reopens-after-restart", test_sync_reopens_after_restart);
   ADD_TEST ("/lsp/diagnostics/shown-and-updated", test_diagnostics_shown_and_updated);
   ADD_TEST ("/lsp/diagnostics/stale-dropped", test_diagnostics_stale_dropped);
+  g_test_add ("/lsp/definition/location", Fixture, "--definition 0:3",
+              fixture_setup, test_definition_found, fixture_teardown);
+  g_test_add ("/lsp/definition/location-link", Fixture, "--definition 0:3 --definition-link",
+              fixture_setup, test_definition_found, fixture_teardown);
+  ADD_TEST ("/lsp/definition/nothing", test_definition_nothing);
+  ADD_TEST ("/lsp/definition/stale", test_definition_stale);
+  ADD_TEST ("/lsp/definition/no-server", test_definition_no_server);
 
 #undef ADD_TEST
 

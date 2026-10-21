@@ -55,6 +55,31 @@ void              palang_lsp_manager_remove_document (PalangLspManager *self,
 void              palang_lsp_manager_add_view        (PalangLspManager *self,
                                                       GtkSourceView    *view);
 
+/* Asks @document's server where the name at @iter is defined
+ * ("textDocument/definition"). Fails with G_IO_ERROR_NOT_CONNECTED if
+ * the document has no server or it isn't ready, and with
+ * G_IO_ERROR_CANCELLED if the text changed before the answer came (the
+ * answer would be about old text). */
+void              palang_lsp_manager_find_definition_async  (PalangLspManager    *self,
+                                                             PalangDocument      *document,
+                                                             const GtkTextIter   *iter,
+                                                             GCancellable        *cancellable,
+                                                             GAsyncReadyCallback  callback,
+                                                             gpointer             user_data);
+
+/* @file: (out) (transfer full) (nullable): where the definition is, NULL
+ * if the server found none. @line, @column: (out): its position, counted
+ * from 0, the column in characters. (If @file isn't open, the column is
+ * the server's UTF-16 count, which differs only after characters like
+ * emoji on that line.)
+ * Returns: FALSE on error. */
+gboolean          palang_lsp_manager_find_definition_finish (PalangLspManager  *self,
+                                                             GAsyncResult      *result,
+                                                             GFile            **file,
+                                                             guint             *line,
+                                                             guint             *column,
+                                                             GError           **error);
+
 /* Stops every server and starts the ones the open documents need. Also
  * tries again servers that had failed. */
 void              palang_lsp_manager_restart         (PalangLspManager *self);
