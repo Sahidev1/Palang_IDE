@@ -335,6 +335,101 @@ palang_search_is_running (PalangSearch *self)
   return self->run != NULL;
 }
 
+/* ---- Listing files ------------------------------------------------------ */
+
+/* The GTask pattern: an async function creates a GTask (which remembers
+ * the callback), starts the work, and later "returns" through the task
+ * (g_task_return_*). The _finish function reads the result back out. */
+
+static void
+on_files_listed (GObject      *source,
+                 GAsyncResult *result,
+                 gpointer      user_data)
+{
+  g_autoptr (GTask) task = user_data;
+  GSubprocess *process = G_SUBPROCESS (source);
+  g_autoptr (GBytes) output = NULL;
+  g_autoptr (GError) error = NULL;
+  g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
+  g_autofree char *text = NULL;
+  g_auto (GStrv) lines = NULL;
+
+  if (!g_subprocess_communicate_finish (process, result, &output, NULL, &error))
+    {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  /* Exit status 1 just means "no files"; 2 is an error. */
+  if (g_subprocess_get_if_exited (process) && g_subprocess_get_exit_status (process) == 2)
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_FAILED,
+                               "ripgrep (rg) could not list the files.");
+      return;
+    }
+
+  /* One path per line. g_strndup () adds the NUL the bytes don't have. */
+  text = g_strndup (g_bytes_get_data (output, NULL), g_bytes_get_size (output));
+  lines = g_strsplit (text, "\n", -1);
+  for (guint i = 0; lines[i] != NULL; i++)
+    if (lines[i][0] != '\0')
+      g_strv_builder_add (builder, lines[i]);
+
+  g_task_return_pointer (task, g_strv_builder_end (builder), (GDestroyNotify) g_strfreev);
+}
+
+void
+palang_search_list_files_async (GFile               *folder,
+                                GCancellable        *cancellable,
+                                GAsyncReadyCallback  callback,
+                                gpointer             user_data)
+{
+  g_autoptr (GTask) task = g_task_new (NULL, cancellable, callback, user_data);
+  g_autoptr (GSubprocessLauncher) launcher = NULL;
+  g_autoptr (GSubprocess) process = NULL;
+  g_autoptr (GError) error = NULL;
+  g_autofree char *folder_path = NULL;
+  const char *argv[] = { "rg", "--files", "--no-messages", "--sort", "path", NULL };
+
+  g_return_if_fail (G_IS_FILE (folder));
+
+  folder_path = g_file_get_path (folder);
+  if (folder_path == NULL)
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                               "Only folders on this computer can be listed.");
+      return;
+    }
+
+  launcher = g_subprocess_launcher_new (G_SUBPROCESS_FLAGS_STDOUT_PIPE |
+                                        G_SUBPROCESS_FLAGS_STDERR_SILENCE);
+  g_subprocess_launcher_set_cwd (launcher, folder_path);
+  process = g_subprocess_launcher_spawnv (launcher, argv, &error);
+  if (process == NULL)
+    {
+      if (g_error_matches (error, G_SPAWN_ERROR, G_SPAWN_ERROR_NOENT))
+        g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                                 "Quick Open needs ripgrep. Install it with: sudo apt install ripgrep");
+      else
+        g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  /* Collects all of rg's output, then calls on_files_listed. The task's
+   * reference moves to the callback. */
+  g_subprocess_communicate_async (process, NULL, cancellable, on_files_listed,
+                                  g_steal_pointer (&task));
+}
+
+char **
+palang_search_list_files_finish (GAsyncResult  *result,
+                                 GError       **error)
+{
+  g_return_val_if_fail (G_IS_TASK (result), NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
+}
+
 /* ---- GObject boilerplate ------------------------------------------------ */
 
 static void

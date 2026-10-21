@@ -46,6 +46,14 @@ test_search = executable('test-search',
 )
 test('search', test_search, env: test_env)
 
+test_fuzzy = executable('test-fuzzy',
+  'test-fuzzy.c',
+  link_with: libpalang,
+  dependencies: palang_deps,
+  include_directories: [config_inc, palang_inc],
+)
+test('fuzzy', test_fuzzy, env: test_env)
+
 # UI tests need a display. Use a virtual one (xvfb-run) when installed, so
 # they also work without a desktop session; otherwise use the current one.
 xvfb_run = find_program('xvfb-run', required: false)
@@ -57,6 +65,7 @@ ui_tests = {
   'editor': 'test-editor.c',
   'appearance': 'test-appearance.c',
   'terminal': 'test-terminal.c',
+  'palette': 'test-palette.c',
 }
 
 foreach name, source : ui_tests

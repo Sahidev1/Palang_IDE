@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The command palette and Quick Open. Behaviour lives in
+     src/palette/palang-palette.c. -->
+<interface>
+  <template class="PalangPalette" parent="AdwDialog">
+    <property name="content-width">560</property>
+    <property name="content-height">420</property>
+    <property name="focus-widget">entry</property>
+    <property name="child">
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkSearchEntry" id="entry">
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <property name="margin-top">12</property>
+            <property name="margin-bottom">6</property>
+            <!-- Filtering is quick, so react almost at once. -->
+            <property name="search-delay">50</property>
+            <signal name="search-changed" handler="on_search_changed"/>
+            <signal name="activate" handler="on_entry_activate"/>
+            <signal name="stop-search" handler="on_stop_search"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="status_label">
+            <property name="visible">false</property>
+            <property name="xalign">0</property>
+            <property name="margin-start">18</property>
+            <property name="margin-bottom">6</property>
+            <style>
+              <class name="dim-label"/>
+              <class name="caption"/>
+            </style>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="vexpand">true</property>
+            <property name="hscrollbar-policy">never</property>
+            <property name="child">
+              <!-- Model and row widgets are set up in palang-palette.c. -->
+              <object class="GtkListView" id="list_view">
+                <property name="single-click-activate">true</property>
+                <signal name="activate" handler="on_row_activate"/>
+                <style>
+                  <class name="navigation-sidebar"/>
+                </style>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

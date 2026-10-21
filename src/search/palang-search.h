@@ -45,4 +45,18 @@ GListModel   *palang_search_get_results (PalangSearch *self);
 /* TRUE while a search runs. Also the "running" property. */
 gboolean      palang_search_is_running  (PalangSearch *self);
 
+/* Lists the files in @folder and its subfolders (`rg --files`: the files
+ * a search looks at, so not those ignored by .gitignore, nor hidden ones),
+ * sorted by path. For Quick Open. */
+void          palang_search_list_files_async  (GFile               *folder,
+                                               GCancellable        *cancellable,
+                                               GAsyncReadyCallback  callback,
+                                               gpointer             user_data);
+
+/* Returns: (transfer full): the files' paths relative to the folder, as
+ * file names (bytes; use g_filename_display_name () to show them), or NULL
+ * with @error set. */
+char        **palang_search_list_files_finish (GAsyncResult  *result,
+                                               GError       **error);
+
 G_END_DECLS

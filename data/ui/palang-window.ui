@@ -15,6 +15,14 @@
         <attribute name="label">Open _Folder…</attribute>
         <attribute name="action">win.open-folder</attribute>
       </item>
+      <item>
+        <attribute name="label">Open File in Folder…</attribute>
+        <attribute name="action">win.quick-open</attribute>
+      </item>
+      <item>
+        <attribute name="label">_Command Palette…</attribute>
+        <attribute name="action">win.command-palette</attribute>
+      </item>
     </section>
     <section>
       <item>

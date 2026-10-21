@@ -13,6 +13,7 @@
 
 #include <glib/gstdio.h>
 
+#include "palang-palette.h"
 #include "palang-window.h"
 
 /* ---- Helpers ------------------------------------------------------------ */
@@ -795,6 +796,49 @@ test_project_search (Fixture *fixture, gconstpointer data)
   wait_until (fixture->window, cursor_line_is_visible, GINT_TO_POINTER (3));
 }
 
+static gboolean
+quick_open_listed (PalangWindow *window, gpointer n)
+{
+  AdwDialog *dialog = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (window));
+
+  return PALANG_IS_PALETTE (dialog) &&
+         g_list_model_get_n_items (palang_palette_get_matches (PALANG_PALETTE (dialog))) ==
+         GPOINTER_TO_UINT (n);
+}
+
+/* Ctrl+P lists the folder's files; typing and Enter opens one. */
+static void
+test_quick_open (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) folder = g_file_new_for_path (fixture->dir);
+  g_autoptr (GFile) wanted = write_file (fixture, "palang-panel.c", "");
+  g_autoptr (GFile) other = write_file (fixture, "palang-application.c", "");
+  g_autofree char *rg = g_find_program_in_path ("rg");
+  AdwDialog *dialog;
+  GtkWidget *entry = NULL;
+
+  if (rg == NULL)
+    {
+      g_test_skip ("ripgrep (rg) is not installed");
+      return;
+    }
+
+  show_window (fixture->window);
+  palang_window_open_folder (fixture->window, folder);
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.quick-open", NULL);
+  wait_until (fixture->window, quick_open_listed, GUINT_TO_POINTER (2));
+
+  dialog = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (fixture->window));
+  g_object_get (dialog, "focus-widget", &entry, NULL);
+  gtk_editable_set_text (GTK_EDITABLE (entry), "pan");
+  wait_until (fixture->window, quick_open_listed, GUINT_TO_POINTER (2));
+  run_main_loop_briefly ();  /* let the list re-sort */
+
+  g_signal_emit_by_name (entry, "activate");
+  g_object_unref (entry);
+  wait_until (fixture->window, active_file_is, wanted);
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -832,6 +876,7 @@ main (int   argc,
   ADD_TEST ("/window/terminal-follows-folder", test_terminal_follows_folder);
   ADD_TEST ("/window/open-file-at", test_open_file_at);
   ADD_TEST ("/window/project-search", test_project_search);
+  ADD_TEST ("/window/quick-open", test_quick_open);
 
 #undef ADD_TEST
 

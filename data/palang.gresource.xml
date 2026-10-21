@@ -3,6 +3,7 @@
   <gresource prefix="/io/github/sahidev1/Palang">
     <file>ui/palang-editor.ui</file>
     <file>ui/palang-file-tree.ui</file>
+    <file>ui/palang-palette.ui</file>
     <file>ui/palang-panel.ui</file>
     <file>ui/palang-preferences-dialog.ui</file>
     <file>ui/palang-search-bar.ui</file>
