@@ -29,6 +29,7 @@ gnome = import('gnome')
 gtk_dep       = dependency('gtk4', version: '>= 4.14')
 adw_dep       = dependency('libadwaita-1', version: '>= 1.5')
 gtksource_dep = dependency('gtksourceview-5', version: '>= 5.12')
+vte_dep       = dependency('vte-2.91-gtk4', version: '>= 0.76')
 
 # config.h: values the C code needs from the build system.
 conf = configuration_data()

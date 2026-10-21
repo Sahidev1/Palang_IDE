@@ -19,3 +19,9 @@ leak:libim-ibus.so
 # own use of GtkSourceView objects visible. Found by
 # tests/test-document.c (save-keeps-encoding).
 leak:g_output_stream_write
+
+# VTE 0.76 leaks one GdkContentFormatsBuilder (40 bytes) each time it puts
+# text on a clipboard: on Ctrl+Shift+C and on every selection (the X
+# "primary" selection). Palang never calls gdk_content_formats_builder_new
+# itself, so matching that frame hides only VTE's leak. Found in Phase 2a.2.
+leak:gdk_content_formats_builder_new

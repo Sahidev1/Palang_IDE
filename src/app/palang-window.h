@@ -12,6 +12,7 @@
 #include "palang-editor.h"
 #include "palang-panel.h"
 #include "palang-session.h"
+#include "palang-terminal.h"
 
 G_BEGIN_DECLS
 
@@ -44,6 +45,9 @@ guint         palang_window_get_n_editors     (PalangWindow *self);
 
 /* Returns: (transfer none): the bottom panel under the tabs. */
 PalangPanel  *palang_window_get_panel         (PalangWindow *self);
+
+/* Returns: (transfer none): the terminal, a page of the panel. */
+PalangTerminal *palang_window_get_terminal    (PalangWindow *self);
 
 /* Returns: (transfer full): what's open now, for saving (see
  * palang-session.h). Never-saved documents are left out. */

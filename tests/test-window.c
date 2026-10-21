@@ -686,6 +686,18 @@ test_active_editor_property (Fixture *fixture, gconstpointer data)
   g_assert_cmpuint (notifications, ==, 3);
 }
 
+/* The terminal's shell starts in the project folder. */
+static void
+test_terminal_follows_folder (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) folder = g_file_new_for_path (fixture->dir);
+  PalangTerminal *terminal = palang_window_get_terminal (fixture->window);
+
+  g_assert_null (palang_terminal_get_directory (terminal));
+  palang_window_open_folder (fixture->window, folder);
+  g_assert_true (g_file_equal (palang_terminal_get_directory (terminal), folder));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -720,6 +732,7 @@ main (int   argc,
   ADD_TEST ("/window/toggle-panel", test_toggle_panel);
   ADD_TEST ("/window/panel-session", test_panel_session);
   ADD_TEST ("/window/active-editor-property", test_active_editor_property);
+  ADD_TEST ("/window/terminal-follows-folder", test_terminal_follows_folder);
 
 #undef ADD_TEST
 

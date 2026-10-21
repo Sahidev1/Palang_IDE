@@ -40,6 +40,7 @@ ui_tests = {
   'file-tree': 'test-file-tree.c',
   'editor': 'test-editor.c',
   'appearance': 'test-appearance.c',
+  'terminal': 'test-terminal.c',
 }
 
 foreach name, source : ui_tests
