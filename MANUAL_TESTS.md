@@ -107,64 +107,71 @@ Open. These need real key presses and your real desktop. Run Palang with
 in it (Ctrl+Shift+O) unless a test says otherwise.
 
 ### 1. Bottom panel
-- [ ] Ctrl+J shows the panel under the tabs with the Terminal page; Ctrl+J
+- [x] Ctrl+J shows the panel under the tabs with the Terminal page; Ctrl+J
       again hides it and the cursor is back in the text. The × in the
       panel and the terminal button in the header bar do the same.
-- [ ] Drag the divider to make the panel taller, hide and show it: same
+- [x] Drag the divider to make the panel taller, hide and show it: same
       height. Quit and start again: the panel is shown (or not) as you left
       it, at that height, on the same page.
+      
+      
 
 ### 2. Terminal
-- [ ] The prompt is in the project folder (`pwd`), with your usual shell
+- [x] The prompt is in the project folder (`pwd`), with your usual shell
       and prompt.
-- [ ] Keys go to the shell: type `echo one two`, press **Ctrl+W** → only
+- [x] Keys go to the shell: type `echo one two`, press **Ctrl+W** → only
       `two` is deleted, no tab closes. **Ctrl+R** searches the history,
       **Ctrl+C** stops `sleep 100`, **Ctrl+L** clears.
-- [ ] These still work from the terminal: Ctrl+J, F9, Ctrl+Shift+F,
+- [x] These still work from the terminal: Ctrl+J, F9, Ctrl+Shift+F,
       Ctrl+Shift+P, Ctrl+P, Ctrl+, and Ctrl+Q.
-- [ ] Select text with the mouse, Ctrl+Shift+C, then Ctrl+Shift+V pastes
+- [x] Select text with the mouse, Ctrl+Shift+C, then Ctrl+Shift+V pastes
       it. Text copied in another program pastes with Ctrl+Shift+V.
-- [ ] `exit` → "Process exited — press Enter to restart"; Enter gives a new
+- [x] `exit` → "Process exited — press Enter to restart"; Enter gives a new
       prompt.
-- [ ] Preferences → change the font or the style: the terminal follows.
-- [ ] Run `htop` or `mc` (if installed): colours and mouse look right;
+- [x] Preferences → change the font or the style: the terminal follows.
+- [x] Run `htop` or `mc` (if installed): colours and mouse look right;
       `vim` works.
+    
+    TEST NOTES: test 2, 3rd one: It passes, but alot of them if run command after already done it repetadly it all stacks, so then have to esc from multiple of it. for example ctrl+shift+p repeateadly stacks multiple new windows on top eachother, and have to press esc as many times to close all. 
+    
 
 ### 3. The `palang` command
-- [ ] In the Palang terminal: `palang help`, `palang settings`,
+- [x] In the Palang terminal: `palang help`, `palang settings`,
       `palang get tab-width`.
-- [ ] `palang set tab-width 2`: open editors use 2 from now on, and
+- [x] `palang set tab-width 2`: open editors use 2 from now on, and
       Preferences shows 2. `palang reset tab-width` → back to 4.
-- [ ] `palang set color-scheme purple; echo $?` → an error listing
+- [x] `palang set color-scheme purple; echo $?` → an error listing
       system, light, dark, and `1`.
-- [ ] `palang set color-scheme light` → the window turns light at once.
-- [ ] `palang README.md` opens the file in a tab; `palang ./set` would open
+- [x] `palang set color-scheme light` → the window turns light at once.
+- [x] `palang README.md` opens the file in a tab; `palang ./set` would open
       a file called `set`.
-- [ ] In a terminal *outside* Palang (with Palang running),
+- [x] In a terminal *outside* Palang (with Palang running),
       `./build/src/palang settings` doesn't list settings: Palang tries to
       open a file called `settings` ("Could not open file" if there's none).
-- [ ] After installing the `.deb` (Phase 1 test 1): in the Palang terminal,
+- [x] After installing the `.deb` (Phase 1 test 1): in the Palang terminal,
       `palang set <Tab><Tab>` lists the setting names and
       `palang set color-scheme <Tab><Tab>` lists system, light, dark.
 
+    TEST NOTES: all tests pass but strange behavior with tab width = 2: Tabing from empty line works, but type something, and tab, it only goes one space, not a tab forward. Minor issue, but worth nothing.
+
 ### 4. Project search
-- [ ] Select a word in an editor, Ctrl+Shift+F: the Search page opens
+- [x] Select a word in an editor, Ctrl+Shift+F: the Search page opens
       searching for it. Results are grouped under file paths, with the
       matches in bold.
-- [ ] Click a result: its file opens (or its tab is selected) with the
+- [x] Click a result: its file opens (or its tab is selected) with the
       cursor on that line, scrolled into view.
-- [ ] Try Aa, W and .*; an invalid regex like `foo(` with .* on shows an
+- [x] Try Aa, W and .*; an invalid regex like `foo(` with .* on shows an
       error message instead of results.
-- [ ] Search for something very common (`e`): it stops at 5000 results and
+- [x] Search for something very common (`e`): it stops at 5000 results and
       says so; the window stays responsive while it searches.
-- [ ] Files ignored by `.gitignore` (e.g. under `build/`) aren't searched.
+- [x] Files ignored by `.gitignore` (e.g. under `build/`) aren't searched.
 
 ### 5. Command palette and Quick Open
-- [ ] Ctrl+Shift+P: every command with its shortcut. Type `sva` → Save All
+- [x] Ctrl+Shift+P: every command with its shortcut. Type `sva` → Save All
       on top; Up/Down move the highlight; Enter runs it; Escape closes.
-- [ ] Ctrl+P: type `appwin` → palang-window.c and .h (src/app); Enter
+- [x] Ctrl+P: type `appwin` → palang-window.c and .h (src/app); Enter
       opens the highlighted one. A click opens one too.
-- [ ] Ctrl+P with no folder open shows "Open a folder first".
+- [x] Ctrl+P with no folder open shows "Open a folder first".
 
 ---
 
