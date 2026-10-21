@@ -72,6 +72,16 @@ Palang now has a bottom panel with a terminal and project-wide search, a
 - **lsan.supp:** VTE 0.76 leaks a small block on every copy/selection
   (matched on `gdk_content_formats_builder_new`).
 
+### Manual test results (sahi, 2026-10-21)
+All Phase 2a manual tests passed. Two notes:
+
+- **Dialogs stacked:** pressing Ctrl+Shift+P, Ctrl+P or Ctrl+, again opened
+  another dialog on top. Fixed after the tests: one palette at a time (the
+  other palette's shortcut switches to it), one Preferences. Its test also
+  found a crash when Quick Open lists a folder without files (fixed).
+- **Tab with width 2 moved one space after a letter:** expected; Tab goes
+  to the next tab stop (see MANUAL_TESTS.md, results notes).
+
 ### Open items
 - **`palang-window.c` is ~1600 lines.** Move the panel pages, key routing
   and palette actions into their own file before 2b adds LSP wiring

@@ -59,13 +59,18 @@ palang_application_quit_action (GSimpleAction *action,
     gtk_window_close (GTK_WINDOW (l->data));
 }
 
-/* "app.preferences": show the Preferences window over the current window. */
+/* "app.preferences": show the Preferences window over the current window,
+ * unless it is already showing (pressing Ctrl+, twice). */
 static void
 palang_application_preferences_action (GSimpleAction *action,
                                        GVariant      *parameter,
                                        gpointer       user_data)
 {
   GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (user_data));
+
+  if (ADW_IS_APPLICATION_WINDOW (window) &&
+      PALANG_IS_PREFERENCES_DIALOG (adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (window))))
+    return;
 
   adw_dialog_present (palang_preferences_dialog_new (palang_settings_get_default ()),
                       GTK_WIDGET (window));

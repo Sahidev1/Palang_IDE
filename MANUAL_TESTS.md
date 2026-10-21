@@ -188,3 +188,12 @@ in it (Ctrl+Shift+O) unless a test says otherwise.
   the issue is recorded in PROGRESS.md (Phase 1, manual test results).
 - Phase 1, test 4 (Backspace after Tab removed one space, not the indent):
   fixed by turning on GtkSourceView's smart-backspace.
+- Phase 2a, test 2 (shortcuts in the terminal): pressing Ctrl+Shift+P (or
+  Ctrl+P, Ctrl+,) again opened another dialog on top, each needing its own
+  Escape. Fixed: one palette at a time (the other palette's shortcut
+  switches to it), one Preferences. Writing its test also found a crash
+  in Quick Open for a folder with no files (fixed).
+- Phase 2a, test 3 (tab width 2: Tab after typing moved one space): not a
+  bug. With spaces instead of tabs, Tab moves to the next tab stop (every
+  2 columns), so after one letter that is one space; a tab character, VS
+  Code and gedit do the same.

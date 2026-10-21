@@ -65,7 +65,7 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 meson setup build                 # debug + ASan/UBSan + -Werror by default
 ninja -C build
 ninja -C build run                # runs with the LSan suppressions
-meson test -C build               # 13 programs, 91 cases; UI tests via xvfb-run
+meson test -C build               # 13 programs, 92 cases; UI tests via xvfb-run
 tools/build-deb.sh                # .deb of the last *commit* into build-deb/
 ```
 
@@ -114,7 +114,7 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 |---|---|
 | 0 Setup | ✅ |
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
-| 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests (`MANUAL_TESTS.md`, Phase 2a) waiting for sahi |
+| 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests passed (dialog stacking fixed afterwards) |
 | 2b LSP client | next (`docs/plan/phase-2.md`); needs `clangd` installed |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
@@ -186,7 +186,6 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-First read sahi's Phase 2a manual test results in `MANUAL_TESTS.md` and
-investigate failures. Then Phase 2b (LSP client), planned in
-`docs/plan/phase-2.md`; discuss the design with sahi before coding. It
-needs `sudo apt install clangd` (sahi runs it).
+Phase 2b (LSP client), planned in `docs/plan/phase-2.md`; discuss the
+design with sahi before coding. Start by splitting `palang-window.c`
+(open item above). It needs `sudo apt install clangd` (sahi runs it).

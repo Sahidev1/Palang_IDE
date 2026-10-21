@@ -839,6 +839,26 @@ test_quick_open (Fixture *fixture, gconstpointer data)
   wait_until (fixture->window, active_file_is, wanted);
 }
 
+/* Pressing Ctrl+P while Quick Open is open doesn't stack a second one. */
+static void
+test_quick_open_once (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) folder = g_file_new_for_path (fixture->dir);
+  AdwApplicationWindow *window = ADW_APPLICATION_WINDOW (fixture->window);
+  AdwDialog *first;
+
+  show_window (fixture->window);
+  palang_window_open_folder (fixture->window, folder);
+
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.quick-open", NULL);
+  first = adw_application_window_get_visible_dialog (window);
+  g_assert_true (PALANG_IS_PALETTE (first));
+
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.quick-open", NULL);
+  run_main_loop_briefly ();
+  g_assert_true (adw_application_window_get_visible_dialog (window) == first);
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -877,6 +897,7 @@ main (int   argc,
   ADD_TEST ("/window/open-file-at", test_open_file_at);
   ADD_TEST ("/window/project-search", test_project_search);
   ADD_TEST ("/window/quick-open", test_quick_open);
+  ADD_TEST ("/window/quick-open-once", test_quick_open_once);
 
 #undef ADD_TEST
 

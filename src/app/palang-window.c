@@ -48,6 +48,11 @@ struct _PalangWindow
   PalangTerminal    *terminal;
   PalangSearchPanel *search_panel;
 
+  /* The open palette, if any (not owned; see show_palette), and the
+   * action that opened it. */
+  PalangPalette   *palette;
+  const char      *palette_action;
+
   /* The panel's height while it's hidden, measured like GtkPaned does:
    * from the divider to the bottom (see panel_height_on_screen). */
   int panel_height;
@@ -1291,6 +1296,44 @@ on_command_chosen (PalangPalette     *palette,
   gtk_widget_activate_action (GTK_WIDGET (self), palang_palette_item_get_id (item), NULL);
 }
 
+/* Only one palette at a time. Pressing Ctrl+Shift+P (or Ctrl+P) while its
+ * palette is open keeps it as it is; the other shortcut switches to the
+ * other palette. Returns: TRUE if the palette of @action is already open. */
+static gboolean
+palette_is_open (PalangWindow *self,
+                 const char   *action)
+{
+  if (self->palette == NULL)
+    return FALSE;
+
+  if (g_str_equal (self->palette_action, action))
+    return TRUE;
+
+  adw_dialog_close (ADW_DIALOG (self->palette));
+  return FALSE;
+}
+
+/* "closed" may come after a new palette was shown (the old one fades
+ * out), so forget only the palette that actually closed. */
+static void
+on_palette_closed (AdwDialog    *dialog,
+                   PalangWindow *self)
+{
+  if (ADW_DIALOG (self->palette) == dialog)
+    self->palette = NULL;
+}
+
+static void
+show_palette (PalangWindow  *self,
+              PalangPalette *palette,
+              const char    *action)
+{
+  self->palette = palette;
+  self->palette_action = action;
+  g_signal_connect (palette, "closed", G_CALLBACK (on_palette_closed), self);
+  adw_dialog_present (ADW_DIALOG (palette), GTK_WIDGET (self));
+}
+
 /* Ctrl+Shift+P: every command of the app's command table, with its
  * shortcut as the subtitle. */
 static void
@@ -1304,7 +1347,7 @@ command_palette_action (GtkWidget  *widget,
   GListModel *commands;
   PalangPalette *palette;
 
-  if (app == NULL)
+  if (app == NULL || palette_is_open (self, "win.command-palette"))
     return;
 
   commands = palang_application_get_commands (PALANG_APPLICATION (app));
@@ -1337,7 +1380,7 @@ command_palette_action (GtkWidget  *widget,
   palette = palang_palette_new ("Run a command");
   palang_palette_set_items (palette, G_LIST_MODEL (items));
   g_signal_connect (palette, "item-activated", G_CALLBACK (on_command_chosen), self);
-  adw_dialog_present (ADW_DIALOG (palette), GTK_WIDGET (self));
+  show_palette (self, palette, "win.command-palette");
 }
 
 static void
@@ -1403,6 +1446,9 @@ quick_open_action (GtkWidget  *widget,
   GFile *folder = palang_window_get_folder (self);
   PalangPalette *palette;
 
+  if (palette_is_open (self, "win.quick-open"))
+    return;
+
   if (folder == NULL)
     {
       show_toast (self, "Open a folder first (Ctrl+Shift+O) to find files in it.");
@@ -1412,7 +1458,7 @@ quick_open_action (GtkWidget  *widget,
   palette = palang_palette_new ("Open a file in the folder");
   palang_palette_set_status (palette, "Listing files…");
   g_signal_connect (palette, "item-activated", G_CALLBACK (on_file_chosen), self);
-  adw_dialog_present (ADW_DIALOG (palette), GTK_WIDGET (self));
+  show_palette (self, palette, "win.quick-open");
 
   /* Listing runs in the background; the palette is already open. */
   palang_search_list_files_async (folder, NULL, on_quick_open_listed, g_object_ref (palette));

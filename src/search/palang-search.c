@@ -368,12 +368,16 @@ on_files_listed (GObject      *source,
       return;
     }
 
-  /* One path per line. g_strndup () adds the NUL the bytes don't have. */
-  text = g_strndup (g_bytes_get_data (output, NULL), g_bytes_get_size (output));
-  lines = g_strsplit (text, "\n", -1);
-  for (guint i = 0; lines[i] != NULL; i++)
-    if (lines[i][0] != '\0')
-      g_strv_builder_add (builder, lines[i]);
+  /* One path per line. g_strndup () adds the NUL the bytes don't have.
+   * (Empty output has no data at all: the pointer is NULL.) */
+  if (g_bytes_get_size (output) > 0)
+    {
+      text = g_strndup (g_bytes_get_data (output, NULL), g_bytes_get_size (output));
+      lines = g_strsplit (text, "\n", -1);
+      for (guint i = 0; lines[i] != NULL; i++)
+        if (lines[i][0] != '\0')
+          g_strv_builder_add (builder, lines[i]);
+    }
 
   g_task_return_pointer (task, g_strv_builder_end (builder), (GDestroyNotify) g_strfreev);
 }
