@@ -70,6 +70,16 @@ Each phase's design lives in `docs/plan/`; a session reads only its own.
 Phases 3 and 4 are independent and can swap order. Phase 2 comes before
 Phase 5 because language-server types feed math code generation.
 
+**Size estimates (discussed 2026-10-21, not decided).** Measured against
+Phase 2a (≈6,200 lines with tests): 2b LSP 1.5–2× (maybe split 2b/2c,
+see `docs/plan/phase-2.md`); 3 autocomplete 1.5–2× (3a providers +
+keyring, 3b ghost text); 4 symbols ~0.5× (needs math regions from 5, so
+likely folded into its start); 5 math blocks 3–5× (5a parser + markers +
+hidden blocks + Python, 5b C/Rust types via LSP, 5c 2D rendering, 5d AI
+fallback); 6 Claude Code 1–1.5×. Shared work to build once: a diff review
+UI (Phase 5 AI approval and Phase 6), and `PalangDocument` rules for text
+that isn't file content (Phase 3 ghost text, Phase 5 hidden code).
+
 ---
 
 ## 5. Open decisions

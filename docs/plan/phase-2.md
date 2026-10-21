@@ -158,7 +158,43 @@ Module `lsp/`.
 - Language-server types later feed the math type system
   (`phase-4-5-math.md` §7).
 
-**Prerequisite:** no language server is installed yet. Start with C:
-`sudo apt install clangd` (sahi runs it).
+**Prerequisite:** `clangd` is installed (checked 2026-10-21). Meson writes
+`build/compile_commands.json`, which clangd finds by itself, so Palang's
+own sources work as the first test project.
 
 **Verification:** `clangd`/`pyright` diagnostics and go-to-definition work.
+
+### Notes from the size discussion (2026-10-21) — proposals, not decided
+
+Discussed with sahi after 2a; **confirm these with sahi before coding**.
+
+- **Size:** about as much code as 2a (~4,000–5,000 lines with tests) but
+  1.5–2× the effort: one deep asynchronous feature instead of five small
+  ones, and its bugs are less visible.
+- **Proposed split into two sessions:**
+  - **2b:** step 0 (split `palang-window.c`, see PROGRESS.md 2a open
+    items), client core (spawn per language + project folder, `initialize`,
+    shutdown, restart after a crash, `[lsp]` settings), document sync
+    (didOpen/didChange/didSave/didClose), diagnostics (underlines, gutter,
+    message on hover), go to definition (F12 / Ctrl+click →
+    `palang_window_open_file_at ()`).
+  - **2c:** hover popups and completion (`GtkSourceCompletionProvider`,
+    trigger characters, snippets). Completion sits next to Phase 3's ghost
+    text, so doing it last fits the roadmap.
+- **Rough parts and sizes:** client core 700–900 lines, sync 400,
+  diagnostics 500–700, hover 250, go to definition 200, completion
+  600–800, tests 700–900.
+- **Traps to plan for:**
+  - LSP positions count **UTF-16 code units**; the editor counts
+    characters. Every position needs converting (emoji and other
+    characters outside the BMP are where it shows).
+  - Replies can arrive after the document changed; use the document
+    version and drop stale replies.
+  - Tests need a **fake language server** (a small program speaking
+    JSON-RPC over stdio), so they don't depend on clangd.
+- **Open questions for sahi:**
+  1. Python server: `pyright` needs npm; `python3-pylsp` comes from apt
+     (`sudo apt install python3-pylsp`, not installed yet). Proposal: pylsp.
+  2. A "Problems" page in the bottom panel listing all diagnostics: in 2b,
+     or later?
+  3. Agree to the 2b/2c split (PLAN.md roadmap would get a 2c row).
