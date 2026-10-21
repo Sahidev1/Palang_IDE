@@ -191,15 +191,17 @@ Phase 2b, the LSP client. Decided with sahi on 2026-10-21 (recorded in
 `docs/plan/phase-2.md` §2b/2c): split into 2b and 2c; languages **C
 (clangd), Python (pylsp), JavaScript (typescript-language-server)**, no
 Rust; the Problems panel page comes later. Follow the 2b step table there.
-2b.0 (window split) and 2b.1 (client core: `src/lsp/`, window wiring in
-`palang-window-lsp.c`, tests with `tests/fake-lsp-server.c`) are done;
-next is 2b.2, document sync, which goes into `PalangLspManager` (it
-already tracks the open documents and restarts servers).
+2b.0 (window split), 2b.1 (client core: `src/lsp/`, window wiring in
+`palang-window-lsp.c`, tests with `tests/fake-lsp-server.c`) and 2b.2
+(document sync: `PalangLspDocument`, UTF-16 positions in
+`palang-lsp-position.c`) are done; next is 2b.3, diagnostics. Servers'
+notifications arrive on `PalangLspClient::notification`; positions go
+through `palang_lsp_iter_from_position ()`.
 
 - `clangd` is installed; meson's `build/compile_commands.json` makes
   Palang's own code the first test project.
-- `pylsp` is not installed yet: `sudo apt install python3-pylsp` (sahi
-  runs it).
+- `pylsp` is installed, but without `python3-pyflakes` it reports no
+  diagnostics (sahi runs `sudo apt install python3-pyflakes`).
 - `typescript-language-server` comes from npm (`npm install -g
   typescript-language-server typescript@5`); sahi's Node is from nvm, so it
   may not be on `PATH` when Palang is started from the desktop menu.

@@ -5,7 +5,7 @@
  * don't depend on clangd or pylsp being installed.
  *
  *   fake-lsp-server [--log FILE] [--crash-after-initialized] [--ignore-shutdown]
- *                   [--refuse-initialize]
+ *                   [--refuse-initialize] [--full-sync] [--crash-on-change]
  *
  *   --log FILE                 append every message received to FILE, one
  *                              line each: the method, a space, the params
@@ -17,6 +17,9 @@
  *                              "exit" (a server that hangs)
  *   --refuse-initialize        answer "initialize" with an error (a server
  *                              missing something it needs)
+ *   --full-sync                ask for the whole text on every change
+ *                              (default: only the edited range)
+ *   --crash-on-change          exit with status 1 when a didChange arrives
  *
  * Requests it answers: "initialize", "shutdown", and "fake/echo", which
  * replies with its params.
@@ -35,6 +38,8 @@ static char *log_path;
 static gboolean crash_after_initialized;
 static gboolean ignore_shutdown;
 static gboolean refuse_initialize;
+static gboolean full_sync;
+static gboolean crash_on_change;
 static GMainLoop *main_loop;
 
 static void
@@ -80,7 +85,7 @@ on_handle_call (JsonrpcClient *rpc,
     {
       g_autoptr (GVariant) reply = JSONRPC_MESSAGE_NEW (
         "capabilities", "{",
-          "textDocumentSync", JSONRPC_MESSAGE_PUT_INT64 (2),
+          "textDocumentSync", JSONRPC_MESSAGE_PUT_INT64 (full_sync ? 1 : 2),
         "}",
         "serverInfo", "{",
           "name", JSONRPC_MESSAGE_PUT_STRING ("fake"),
@@ -117,6 +122,8 @@ on_notification (JsonrpcClient *rpc,
   /* _exit skips the sanitizers' leak check: this is a pretend crash. */
   if (g_str_equal (method, "initialized") && crash_after_initialized)
     _exit (1);
+  if (g_str_equal (method, "textDocument/didChange") && crash_on_change)
+    _exit (1);
 
   if (g_str_equal (method, "exit") && !ignore_shutdown)
     g_main_loop_quit (main_loop);
@@ -139,6 +146,8 @@ main (int   argc,
     { "crash-after-initialized", 0, 0, G_OPTION_ARG_NONE, &crash_after_initialized, NULL, NULL },
     { "ignore-shutdown", 0, 0, G_OPTION_ARG_NONE, &ignore_shutdown, NULL, NULL },
     { "refuse-initialize", 0, 0, G_OPTION_ARG_NONE, &refuse_initialize, NULL, NULL },
+    { "full-sync", 0, 0, G_OPTION_ARG_NONE, &full_sync, NULL, NULL },
+    { "crash-on-change", 0, 0, G_OPTION_ARG_NONE, &crash_on_change, NULL, NULL },
     { NULL }
   };
   g_autoptr (GOptionContext) context = g_option_context_new (NULL);

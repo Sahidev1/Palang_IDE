@@ -10,7 +10,7 @@
  *
  * It also watches its file. When another program changes or deletes it,
  * the document emits "changed-on-disk" (gboolean deleted). Our own saves
- * never trigger it.
+ * never trigger it; they emit "saved" instead (used by language servers).
  */
 
 #pragma once

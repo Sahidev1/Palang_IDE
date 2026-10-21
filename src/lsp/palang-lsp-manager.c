@@ -4,16 +4,20 @@
  *   clients    server key ("python") → PalangLspClient, for the servers
  *              that have been started (including failed ones, so a server
  *              that isn't installed is reported once, not for every file)
- *   documents  the open documents; their languages decide which servers
- *              run
+ *   documents  a PalangLspDocument for every open document: their
+ *              languages decide which servers run, and each one keeps its
+ *              server's copy of the text up to date
  *
  * Whenever something changes the set of servers (folder, settings,
- * restart), the affected clients are stopped and removed, then
- * ensure_client () runs for every document and starts what's missing.
+ * restart), the affected documents are taken off their server (didClose),
+ * the clients are stopped and removed, then ensure_client () runs for
+ * every document: it starts what's missing and hands each document to its
+ * server.
  */
 
 #include "config.h"
 
+#include "palang-lsp-document.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
 
@@ -28,7 +32,7 @@ struct _PalangLspManager
    * PalangLspClient. */
   GHashTable *clients;
 
-  GPtrArray *documents;  /* owned references to PalangDocument */
+  GPtrArray *documents;  /* owned PalangLspDocument, one per open document */
 };
 
 G_DEFINE_FINAL_TYPE (PalangLspManager, palang_lsp_manager, G_TYPE_OBJECT)
@@ -68,27 +72,27 @@ on_client_failed (PalangLspClient  *client,
   g_signal_emit (self, signals[SIGNAL_SERVER_FAILED], 0, message);
 }
 
-/* Starts the server @document needs, unless it is running (or has failed)
- * already. */
-static void
-ensure_client (PalangLspManager *self,
-               PalangDocument   *document)
+/* Returns: (transfer none) (nullable): the client for @server, started
+ * now if it wasn't yet. NULL if the user turned this server off or its
+ * command is invalid. */
+static PalangLspClient *
+get_or_start_client (PalangLspManager          *self,
+                     const PalangLspServerInfo *server)
 {
-  const PalangLspServerInfo *server = find_server (document);
   g_autofree char *setting = NULL;
   g_autofree char *command = NULL;
   g_autofree char *default_command = NULL;
   g_auto (GStrv) argv = NULL;
   g_autoptr (GError) error = NULL;
-  PalangLspClient *client;
+  PalangLspClient *client = g_hash_table_lookup (self->clients, server->key);
 
-  if (server == NULL || g_hash_table_contains (self->clients, server->key))
-    return;
+  if (client != NULL)
+    return client;
 
   setting = palang_lsp_dup_setting_name (server);
   command = palang_settings_dup_value (self->settings, setting);
   if (command == NULL || g_strstrip (command)[0] == '\0')
-    return;  /* the user turned this server off */
+    return NULL;  /* the user turned this server off */
 
   /* "typescript-language-server --stdio" → its words, split the way a
    * shell would (so quotes work for paths with spaces). */
@@ -98,7 +102,7 @@ ensure_client (PalangLspManager *self,
         g_strdup_printf ("The setting “%s” isn't a valid command: %s", setting, error->message);
 
       g_signal_emit (self, signals[SIGNAL_SERVER_FAILED], 0, message);
-      return;
+      return NULL;
     }
 
   /* The install hint is only right for the server Palang suggests. */
@@ -110,6 +114,19 @@ ensure_client (PalangLspManager *self,
   g_hash_table_insert (self->clients, (gpointer) server->key, client);
 
   palang_lsp_client_start (client);
+  return client;
+}
+
+/* Hands @lsp_document to the server its language needs (starting it if
+ * necessary), or to none. */
+static void
+ensure_client (PalangLspManager  *self,
+               PalangLspDocument *lsp_document)
+{
+  const PalangLspServerInfo *server = find_server (palang_lsp_document_get_document (lsp_document));
+  PalangLspClient *client = server != NULL ? get_or_start_client (self, server) : NULL;
+
+  palang_lsp_document_set_client (lsp_document, client);
 }
 
 static void
@@ -119,12 +136,21 @@ ensure_all_clients (PalangLspManager *self)
     ensure_client (self, g_ptr_array_index (self->documents, i));
 }
 
-/* Stops @client; the hash table's reference is dropped by the caller. The
- * client stays alive by itself until its server has exited. */
+/* Stops @client after taking its documents off it (didClose); the hash
+ * table's reference is dropped by the caller. The client stays alive by
+ * itself until its server has exited. */
 static void
 stop_client (PalangLspManager *self,
              PalangLspClient  *client)
 {
+  for (guint i = 0; i < self->documents->len; i++)
+    {
+      PalangLspDocument *lsp_document = g_ptr_array_index (self->documents, i);
+
+      if (palang_lsp_document_get_client (lsp_document) == client)
+        palang_lsp_document_set_client (lsp_document, NULL);
+    }
+
   g_signal_handlers_disconnect_by_data (client, self);
   palang_lsp_client_stop (client);
 }
@@ -178,45 +204,76 @@ on_settings_notify (PalangSettings   *settings,
 
 /* ---- Documents ---------------------------------------------------------- */
 
+/* Returns: (transfer none) (nullable): the LSP document for @document. */
+static PalangLspDocument *
+find_lsp_document (PalangLspManager *self,
+                   PalangDocument   *document,
+                   guint            *index)
+{
+  for (guint i = 0; i < self->documents->len; i++)
+    {
+      PalangLspDocument *lsp_document = g_ptr_array_index (self->documents, i);
+
+      if (palang_lsp_document_get_document (lsp_document) == document)
+        {
+          if (index != NULL)
+            *index = i;
+          return lsp_document;
+        }
+    }
+
+  return NULL;
+}
+
+/* E.g. Save As main.txt → main.py: now it needs pylsp. */
 static void
 on_document_language_changed (PalangDocument   *document,
                               GParamSpec       *pspec,
                               PalangLspManager *self)
 {
-  ensure_client (self, document);
+  PalangLspDocument *lsp_document = find_lsp_document (self, document, NULL);
+
+  if (lsp_document != NULL)
+    ensure_client (self, lsp_document);
 }
 
 void
 palang_lsp_manager_add_document (PalangLspManager *self,
                                  PalangDocument   *document)
 {
+  PalangLspDocument *lsp_document;
+
   g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
   g_return_if_fail (PALANG_IS_DOCUMENT (document));
 
-  if (g_ptr_array_find (self->documents, document, NULL))
+  if (find_lsp_document (self, document, NULL) != NULL)
     return;
 
-  g_ptr_array_add (self->documents, g_object_ref (document));
+  lsp_document = palang_lsp_document_new (document);
+  g_ptr_array_add (self->documents, lsp_document);
   g_signal_connect (document, "notify::language",
                     G_CALLBACK (on_document_language_changed), self);
-  ensure_client (self, document);
+  ensure_client (self, lsp_document);
 }
 
 void
 palang_lsp_manager_remove_document (PalangLspManager *self,
                                     PalangDocument   *document)
 {
+  guint index;
+
   g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
   g_return_if_fail (PALANG_IS_DOCUMENT (document));
 
-  if (!g_ptr_array_find (self->documents, document, NULL))
+  if (find_lsp_document (self, document, &index) == NULL)
     return;
 
   g_signal_handlers_disconnect_by_data (document, self);
-  /* The array's free function drops our reference. A server keeps running
-   * when its last document closes: opening another file of that language
-   * is likely, and starting a server can take seconds. */
-  g_ptr_array_remove (self->documents, document);
+  /* The array's free function drops the LSP document, which sends
+   * didClose. A server keeps running when its last document closes:
+   * opening another file of that language is likely, and starting a
+   * server can take seconds. */
+  g_ptr_array_remove_index (self->documents, index);
 }
 
 PalangLspClient *
@@ -233,6 +290,16 @@ palang_lsp_manager_get_client (PalangLspManager *self,
     return NULL;
 
   return g_hash_table_lookup (self->clients, server->key);
+}
+
+PalangLspDocument *
+palang_lsp_manager_get_lsp_document (PalangLspManager *self,
+                                     PalangDocument   *document)
+{
+  g_return_val_if_fail (PALANG_IS_LSP_MANAGER (self), NULL);
+  g_return_val_if_fail (PALANG_IS_DOCUMENT (document), NULL);
+
+  return find_lsp_document (self, document, NULL);
 }
 
 /* ---- Folder ------------------------------------------------------------- */
@@ -311,14 +378,19 @@ palang_lsp_manager_dispose (GObject *object)
     g_signal_handlers_disconnect_by_data (self->settings, self);
   g_clear_object (&self->settings);
 
-  /* Each server is asked to exit; the clients outlive us until it has. */
+  /* Each server is asked to exit (after didClose for its documents); the
+   * clients outlive us until it has. */
   if (self->clients != NULL)
     stop_all_clients (self);
   g_clear_pointer (&self->clients, g_hash_table_unref);
 
   if (self->documents != NULL)
     for (guint i = 0; i < self->documents->len; i++)
-      g_signal_handlers_disconnect_by_data (g_ptr_array_index (self->documents, i), self);
+      {
+        PalangLspDocument *lsp_document = g_ptr_array_index (self->documents, i);
+
+        g_signal_handlers_disconnect_by_data (palang_lsp_document_get_document (lsp_document), self);
+      }
   g_clear_pointer (&self->documents, g_ptr_array_unref);
 
   g_clear_object (&self->folder);

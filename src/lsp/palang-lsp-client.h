@@ -28,6 +28,15 @@
 
 G_BEGIN_DECLS
 
+/* How the server wants to hear about edits ("textDocumentSync" in its
+ * capabilities): not at all, the whole text each time, or just the edited
+ * range. The values are the protocol's. */
+typedef enum {
+  PALANG_LSP_SYNC_NONE        = 0,
+  PALANG_LSP_SYNC_FULL        = 1,
+  PALANG_LSP_SYNC_INCREMENTAL = 2,
+} PalangLspSyncKind;
+
 #define PALANG_TYPE_LSP_CLIENT (palang_lsp_client_get_type ())
 G_DECLARE_FINAL_TYPE (PalangLspClient, palang_lsp_client, PALANG, LSP_CLIENT, GObject)
 
@@ -63,6 +72,10 @@ const char *palang_lsp_client_get_title        (PalangLspClient *self);
 /* Returns: (transfer none) (nullable): the "capabilities" the server
  * announced in its reply to "initialize", NULL until it is ready. */
 GVariant   *palang_lsp_client_get_capabilities (PalangLspClient *self);
+
+/* Returns: how the server wants edits sent; PALANG_LSP_SYNC_NONE until it
+ * is ready. */
+PalangLspSyncKind palang_lsp_client_get_sync_kind (PalangLspClient *self);
 
 /* Sends the request @method with @params (transfer none, nullable). Fails
  * with G_IO_ERROR_NOT_CONNECTED if the server isn't ready. */

@@ -156,7 +156,9 @@ and completion.
   rust-analyzer default. (C++ comes free with clangd.)
   - C: `clangd` (installed, 18.1.3).
   - Python: **`pylsp` (decided)**, from apt: `sudo apt install
-    python3-pylsp` (sahi runs it).
+    python3-pylsp` (sahi runs it). **It needs `python3-pyflakes` for
+    diagnostics** (found in 2b.2: without it pylsp reports none);
+    `python3-pycodestyle` would add style warnings, not wanted by default.
   - JavaScript: `typescript-language-server --stdio`. Not in apt; from
     npm: `npm install -g typescript-language-server typescript@5`. sahi's
     Node is from nvm, which is on `PATH` only in shells, so Palang started
@@ -164,6 +166,9 @@ and completion.
     clear message (which command, how to install), never a silent failure.
     **TypeScript 7 doesn't work** (found in 2b.1): it has no `tsserver`,
     which typescript-language-server 6 needs, hence `typescript@5`.
+    With several nvm Node versions, both packages must be installed under
+    the one whose `bin` comes first on `PATH` (found in 2b.2: TypeScript 5
+    went to Node 22, the server ran from Node 23).
   - Other servers can be configured in `[lsp]`, but only these three are
     tested.
 - **"Problems" page in the bottom panel: later (decided)**, not in 2b

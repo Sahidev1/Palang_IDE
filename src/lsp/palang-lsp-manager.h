@@ -21,6 +21,7 @@
 
 #include "palang-document.h"
 #include "palang-lsp-client.h"
+#include "palang-lsp-document.h"
 #include "palang-settings.h"
 
 G_BEGIN_DECLS
@@ -55,5 +56,10 @@ void              palang_lsp_manager_restart         (PalangLspManager *self);
  * palang_lsp_client_is_ready (). */
 PalangLspClient  *palang_lsp_manager_get_client      (PalangLspManager *self,
                                                       PalangDocument   *document);
+
+/* Returns: (transfer none) (nullable): how the server sees @document
+ * (open or not, its version), NULL if @document wasn't added. */
+PalangLspDocument *palang_lsp_manager_get_lsp_document (PalangLspManager *self,
+                                                       PalangDocument   *document);
 
 G_END_DECLS

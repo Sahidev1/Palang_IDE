@@ -13,8 +13,11 @@
 static const PalangLspServerInfo servers[] = {
   { "c", "C/C++",
     "sudo apt install clangd" },
+  /* pylsp finds errors through pyflakes, which apt doesn't always pull
+   * in; without it there are no diagnostics. (pycodestyle would add style
+   * warnings, left out on purpose.) */
   { "python", "Python",
-    "sudo apt install python3-pylsp" },
+    "sudo apt install python3-pylsp python3-pyflakes" },
   { "javascript", "JavaScript",
     /* TypeScript 7 (the native rewrite) has no tsserver, which
      * typescript-language-server needs; checked with 6.0.2. */

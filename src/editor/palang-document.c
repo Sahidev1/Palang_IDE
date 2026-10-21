@@ -49,6 +49,7 @@ enum {
 
 enum {
   SIGNAL_CHANGED_ON_DISK,
+  SIGNAL_SAVED,
   N_SIGNALS
 };
 
@@ -366,6 +367,7 @@ on_save_finished (GObject      *source,
    * notes.py), so the language may change too. */
   update_language (self);
   notify_location_changed (self);
+  g_signal_emit (self, signals[SIGNAL_SAVED], 0);
   g_task_return_boolean (task, TRUE);
 }
 
@@ -543,6 +545,15 @@ palang_document_class_init (PalangDocumentClass *klass)
                   G_SIGNAL_RUN_LAST,
                   0, NULL, NULL, NULL,
                   G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
+
+  /* "saved" (PalangDocument *document): the text was written to the file
+   * (after "file" and the language were updated, for Save As). */
+  signals[SIGNAL_SAVED] =
+    g_signal_new ("saved",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
+                  G_TYPE_NONE, 0);
 }
 
 static void

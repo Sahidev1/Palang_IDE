@@ -237,6 +237,14 @@ test_save_untitled_needs_target (void)
 }
 
 /* "Save As" on a new document: writes the file and adopts its name. */
+/* "saved" comes after the location was updated. */
+static void
+on_saved (PalangDocument *document,
+          GFile         **file_when_saved)
+{
+  g_set_object (file_when_saved, palang_document_get_file (document));
+}
+
 static void
 test_save_as (Fixture *fixture, gconstpointer data)
 {
@@ -246,12 +254,16 @@ test_save_as (Fixture *fixture, gconstpointer data)
   g_autoptr (GError) error = NULL;
   g_autofree char *on_disk = NULL;
   g_autofree char *title = NULL;
+  g_autoptr (GFile) file_when_saved = NULL;
   GtkSourceLanguage *language;
 
   gtk_text_buffer_set_text (GTK_TEXT_BUFFER (document), "int x;\n", -1);
+  g_signal_connect (document, "saved", G_CALLBACK (on_saved), &file_when_saved);
 
   g_assert_true (save (document, target, &error));
   g_assert_no_error (error);
+  g_assert_nonnull (file_when_saved);
+  g_assert_true (g_file_equal (file_when_saved, target));
 
   on_disk = read_file (target, NULL);
   title = palang_document_dup_title (document);

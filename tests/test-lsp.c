@@ -8,12 +8,14 @@
 #include "config.h"
 
 #include <glib/gstdio.h>
+#include <json-glib/json-glib.h>
 #include <jsonrpc-glib.h>
 #include <string.h>
 
 #include "palang-lsp-client.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
+#include "palang-lsp-position.h"
 
 typedef struct {
   char  *dir;
@@ -406,17 +408,29 @@ test_client_kills_hanging_server (Fixture *fixture, gconstpointer data)
 
 /* ---- Manager ------------------------------------------------------------ */
 
-/* Returns: (transfer full): settings in the fixture's folder, with
- * c-server set to the fake server (logging to @log_path) and the Python
- * server turned off. */
-static PalangSettings *
-new_settings (Fixture    *fixture,
-              const char *log_path)
+/* Returns: (transfer full): the command line that starts the fake server
+ * logging to @log_path, with @option (nullable) added. */
+static char *
+dup_fake_command (const char *log_path,
+                  const char *option)
 {
-  g_autofree char *path = g_build_filename (fixture->dir, "config.ini", NULL);
   g_autofree char *quoted_server = g_shell_quote (FAKE_LSP_SERVER);
   g_autofree char *quoted_log = g_shell_quote (log_path);
-  g_autofree char *command = g_strdup_printf ("%s --log %s", quoted_server, quoted_log);
+
+  return g_strdup_printf ("%s --log %s %s", quoted_server, quoted_log,
+                          option != NULL ? option : "");
+}
+
+/* Returns: (transfer full): settings in the fixture's folder, with
+ * c-server set to the fake server (logging to @log_path, with @option
+ * added if not NULL) and the Python server turned off. */
+static PalangSettings *
+new_settings (Fixture    *fixture,
+              const char *log_path,
+              const char *option)
+{
+  g_autofree char *path = g_build_filename (fixture->dir, "config.ini", NULL);
+  g_autofree char *command = dup_fake_command (log_path, option);
   PalangSettings *settings = palang_settings_new_for_path (path);
 
   g_assert_true (palang_settings_set_from_string (settings, "c-server", command, NULL));
@@ -473,7 +487,7 @@ dispose_manager_and_wait (Fixture          *fixture,
 static void
 test_manager_one_server_per_language (Fixture *fixture, gconstpointer data)
 {
-  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path);
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
   PalangLspManager *manager = palang_lsp_manager_new (settings);
   g_autoptr (PalangDocument) c_file = new_document ("c");
   g_autoptr (PalangDocument) header = new_document ("chdr");
@@ -509,13 +523,11 @@ test_manager_one_server_per_language (Fixture *fixture, gconstpointer data)
 static void
 test_manager_restarts_on_changes (Fixture *fixture, gconstpointer data)
 {
-  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path);
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
   PalangLspManager *manager = palang_lsp_manager_new (settings);
   g_autoptr (PalangDocument) c_file = new_document ("c");
   g_autofree char *second_log = g_build_filename (fixture->dir, "second.log", NULL);
-  g_autofree char *quoted_server = g_shell_quote (FAKE_LSP_SERVER);
-  g_autofree char *quoted_log = g_shell_quote (second_log);
-  g_autofree char *command = g_strdup_printf ("%s --log %s", quoted_server, quoted_log);
+  g_autofree char *command = dup_fake_command (second_log, NULL);
   g_autoptr (GFile) subfolder = g_file_get_child (fixture->folder, "sub");
   g_autofree char *subfolder_path = g_file_get_path (subfolder);
   g_autofree char *subfolder_uri = g_file_get_uri (subfolder);
@@ -549,7 +561,7 @@ test_manager_restarts_on_changes (Fixture *fixture, gconstpointer data)
 static void
 test_manager_reports_missing_server_once (Fixture *fixture, gconstpointer data)
 {
-  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path);
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
   g_autoptr (PalangLspManager) manager = palang_lsp_manager_new (settings);
   g_autoptr (PalangDocument) first = new_document ("c");
   g_autoptr (PalangDocument) second = new_document ("cpp");
@@ -568,6 +580,387 @@ test_manager_reports_missing_server_once (Fixture *fixture, gconstpointer data)
   g_assert_cmpuint (fixture->n_failed, ==, 2);
 }
 
+
+/* ---- Positions ---------------------------------------------------------- */
+
+/* "aé😀b": a, é and b are one UTF-16 unit each, 😀 is two. */
+static void
+test_position_utf16 (void)
+{
+  const char *text = "a\xc3\xa9\xf0\x9f\x98\x80" "b";
+
+  g_assert_cmpuint (palang_lsp_utf16_length (""), ==, 0);
+  g_assert_cmpuint (palang_lsp_utf16_length (text), ==, 5);
+
+  g_assert_cmpuint (palang_lsp_chars_for_utf16 (text, 0), ==, 0);
+  g_assert_cmpuint (palang_lsp_chars_for_utf16 (text, 2), ==, 2);  /* before 😀 */
+  g_assert_cmpuint (palang_lsp_chars_for_utf16 (text, 3), ==, 2);  /* inside 😀 */
+  g_assert_cmpuint (palang_lsp_chars_for_utf16 (text, 4), ==, 3);  /* before b */
+  g_assert_cmpuint (palang_lsp_chars_for_utf16 (text, 5), ==, 4);
+  g_assert_cmpuint (palang_lsp_chars_for_utf16 (text, 99), ==, 4); /* past the end */
+}
+
+static void
+test_position_iters (void)
+{
+  g_autoptr (GtkTextBuffer) buffer = gtk_text_buffer_new (NULL);
+  GtkTextIter iter;
+  guint line, character;
+
+  gtk_text_buffer_set_text (buffer, "x\na\xf0\x9f\x98\x80" "b\n", -1);
+
+  /* The b: character 2 for GTK, 3 for LSP. */
+  gtk_text_buffer_get_iter_at_line_offset (buffer, &iter, 1, 2);
+  palang_lsp_position_from_iter (&iter, &line, &character);
+  g_assert_cmpuint (line, ==, 1);
+  g_assert_cmpuint (character, ==, 3);
+
+  palang_lsp_iter_from_position (buffer, 1, 3, &iter);
+  g_assert_cmpint (gtk_text_iter_get_line (&iter), ==, 1);
+  g_assert_cmpint (gtk_text_iter_get_line_offset (&iter), ==, 2);
+
+  /* Past the end of the line: the line's end. */
+  palang_lsp_iter_from_position (buffer, 0, 50, &iter);
+  g_assert_cmpint (gtk_text_iter_get_line (&iter), ==, 0);
+  g_assert_cmpint (gtk_text_iter_get_line_offset (&iter), ==, 1);
+
+  /* Past the last line: the buffer's end. */
+  palang_lsp_iter_from_position (buffer, 9, 0, &iter);
+  g_assert_true (gtk_text_iter_is_end (&iter));
+}
+
+/* ---- Document sync ------------------------------------------------------ */
+
+/* Loading finished; it must have worked. */
+static void
+on_loaded (GObject      *source,
+           GAsyncResult *result,
+           gpointer      user_data)
+{
+  gboolean *done = user_data;
+  g_autoptr (GError) error = NULL;
+
+  palang_document_load_finish (PALANG_DOCUMENT (source), result, &error);
+  g_assert_no_error (error);
+  *done = TRUE;
+}
+
+/* Saving finished; it must have worked. */
+static void
+on_saved (GObject      *source,
+          GAsyncResult *result,
+          gpointer      user_data)
+{
+  gboolean *done = user_data;
+  g_autoptr (GError) error = NULL;
+
+  palang_document_save_finish (PALANG_DOCUMENT (source), result, &error);
+  g_assert_no_error (error);
+  *done = TRUE;
+}
+
+/* Runs the main loop until the log has @count lines starting with @method. */
+static void
+wait_for_log_count (Fixture    *fixture,
+                    const char *method,
+                    guint       count)
+{
+  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
+
+  while (count_in_log (fixture, method) < count)
+    {
+      if (g_get_monotonic_time () > deadline)
+        {
+          g_autofree char *log = read_log (fixture);
+
+          g_error ("Timed out waiting for %u × “%s” in the server log:\n%s", count, method, log);
+        }
+      g_main_context_iteration (NULL, FALSE);
+    }
+}
+
+/* Returns: (transfer full): the params of the @n-th (from 0) message
+ * @method in the log, parsed as JSON. */
+static JsonNode *
+get_logged_params (Fixture    *fixture,
+                   const char *method,
+                   guint       n)
+{
+  g_autofree char *log = read_log (fixture);
+  g_auto (GStrv) lines = g_strsplit (log, "\n", -1);
+  g_autofree char *line_start = g_strdup_printf ("%s ", method);
+  g_autoptr (GError) error = NULL;
+
+  for (guint i = 0; lines[i] != NULL; i++)
+    if (g_str_has_prefix (lines[i], line_start) && n-- == 0)
+      {
+        JsonNode *node = json_from_string (lines[i] + strlen (line_start), &error);
+
+        g_assert_no_error (error);
+        return node;
+      }
+
+  g_error ("No message %s number %u in the log:\n%s", method, n, log);
+}
+
+/* Returns: (transfer full): all values at @path (a JsonPath expression
+ * like "$.textDocument.uri") in @params, as a JSON array node. */
+static JsonNode *
+query (JsonNode   *params,
+       const char *path)
+{
+  g_autoptr (GError) error = NULL;
+  JsonNode *matches = json_path_query (path, params, &error);
+
+  g_assert_no_error (error);
+  return matches;
+}
+
+/* Returns: the number at @path in @params, which must be there once. */
+static gint64
+get_int (JsonNode   *params,
+         const char *path)
+{
+  g_autoptr (JsonNode) matches = query (params, path);
+  JsonArray *array = json_node_get_array (matches);
+
+  g_assert_cmpuint (json_array_get_length (array), ==, 1);
+  return json_array_get_int_element (array, 0);
+}
+
+/* Returns: (transfer full): the string at @path in @params, which must be
+ * there once. */
+static char *
+dup_string (JsonNode   *params,
+            const char *path)
+{
+  g_autoptr (JsonNode) matches = query (params, path);
+  JsonArray *array = json_node_get_array (matches);
+
+  g_assert_cmpuint (json_array_get_length (array), ==, 1);
+  return g_strdup (json_array_get_string_element (array, 0));
+}
+
+/* Returns: TRUE if there is anything at @path in @params. */
+static gboolean
+has_member (JsonNode   *params,
+            const char *path)
+{
+  g_autoptr (JsonNode) matches = query (params, path);
+
+  return json_array_get_length (json_node_get_array (matches)) > 0;
+}
+
+/* Returns: (transfer full): a document loaded from a new file @name with
+ * @text in the fixture's folder. */
+static PalangDocument *
+load_new_file (Fixture    *fixture,
+               const char *name,
+               const char *text)
+{
+  g_autofree char *path = g_build_filename (fixture->dir, name, NULL);
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+  PalangDocument *document = palang_document_new ();
+  gboolean loaded = FALSE;
+
+  g_assert_true (g_file_set_contents (path, text, -1, NULL));
+  palang_document_load_async (document, file, NULL, on_loaded, &loaded);
+  wait_for_flag (&loaded, "loading the file");
+  return document;
+}
+
+/* Saves @document (to @target if not NULL) and waits until it is done. */
+static void
+save_document (PalangDocument *document,
+               GFile          *target)
+{
+  gboolean saved = FALSE;
+
+  palang_document_save_async (document, target, FALSE, NULL, on_saved, &saved);
+  wait_for_flag (&saved, "saving");
+}
+
+/* Inserts @text at character @offset of @line. */
+static void
+insert_at (PalangDocument *document,
+           int             line,
+           int             offset,
+           const char     *text)
+{
+  GtkTextIter iter;
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, line, offset);
+  gtk_text_buffer_insert (GTK_TEXT_BUFFER (document), &iter, text, -1);
+}
+
+/* didOpen with the whole text; edits as ranges counted in UTF-16;
+ * didSave; didClose when the document goes. */
+static void
+test_sync_open_edit_close (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "int a;\n");
+  g_autofree char *uri = g_file_get_uri (palang_document_get_file (document));
+  g_autoptr (JsonNode) opened = NULL;
+  g_autoptr (JsonNode) emoji = NULL;
+  g_autoptr (JsonNode) after_emoji = NULL;
+  g_autoptr (JsonNode) deleted = NULL;
+  g_autofree char *opened_uri = NULL;
+  g_autofree char *language_id = NULL;
+  g_autofree char *text = NULL;
+  g_autofree char *inserted = NULL;
+  g_autofree char *deleted_text = NULL;
+  PalangLspClient *client;
+  GtkTextIter start, end;
+
+  palang_lsp_manager_set_folder (manager, fixture->folder);
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  opened = get_logged_params (fixture, "textDocument/didOpen", 0);
+  opened_uri = dup_string (opened, "$.textDocument.uri");
+  language_id = dup_string (opened, "$.textDocument.languageId");
+  text = dup_string (opened, "$.textDocument.text");
+  g_assert_cmpstr (opened_uri, ==, uri);
+  g_assert_cmpstr (language_id, ==, "c");
+  g_assert_cmpstr (text, ==, "int a;\n");
+  g_assert_cmpint (get_int (opened, "$.textDocument.version"), ==, 1);
+
+  /* "int 😀a;": inserted at character 4. */
+  insert_at (document, 0, 4, "\xf0\x9f\x98\x80");
+  /* "int 😀xa;": GTK offset 5, but LSP character 6 (😀 is two units). */
+  insert_at (document, 0, 5, "x");
+  /* Delete the emoji again: LSP range 4..6. */
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &start, 0, 4);
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &end, 0, 5);
+  gtk_text_buffer_delete (GTK_TEXT_BUFFER (document), &start, &end);
+  wait_for_log_count (fixture, "textDocument/didChange", 3);
+
+  emoji = get_logged_params (fixture, "textDocument/didChange", 0);
+  inserted = dup_string (emoji, "$.contentChanges[0].text");
+  g_assert_cmpstr (inserted, ==, "\xf0\x9f\x98\x80");
+  g_assert_cmpint (get_int (emoji, "$.contentChanges[0].range.start.character"), ==, 4);
+  g_assert_cmpint (get_int (emoji, "$.contentChanges[0].range.end.character"), ==, 4);
+  g_assert_cmpint (get_int (emoji, "$.textDocument.version"), ==, 2);
+
+  after_emoji = get_logged_params (fixture, "textDocument/didChange", 1);
+  g_assert_cmpint (get_int (after_emoji, "$.contentChanges[0].range.start.character"), ==, 6);
+
+  deleted = get_logged_params (fixture, "textDocument/didChange", 2);
+  deleted_text = dup_string (deleted, "$.contentChanges[0].text");
+  g_assert_cmpstr (deleted_text, ==, "");
+  g_assert_cmpint (get_int (deleted, "$.contentChanges[0].range.start.character"), ==, 4);
+  g_assert_cmpint (get_int (deleted, "$.contentChanges[0].range.end.character"), ==, 6);
+  g_assert_cmpint (get_int (deleted, "$.textDocument.version"), ==, 4);
+  g_assert_cmpint (palang_lsp_document_get_version (palang_lsp_manager_get_lsp_document (manager, document)),
+                   ==, 4);
+
+  save_document (document, NULL);
+  wait_for_log (fixture, "textDocument/didSave");
+
+  client = palang_lsp_manager_get_client (manager, document);
+  palang_lsp_manager_remove_document (manager, document);
+  wait_for_log (fixture, "textDocument/didClose");
+
+  dispose_manager_and_wait (fixture, manager, client);
+}
+
+/* A server that wants the whole text gets it, without a range. */
+static void
+test_sync_full_text (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, "--full-sync");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "int a;\n");
+  g_autoptr (JsonNode) changed = NULL;
+  g_autofree char *text = NULL;
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  insert_at (document, 1, 0, "int b;\n");
+  wait_for_log (fixture, "textDocument/didChange");
+
+  changed = get_logged_params (fixture, "textDocument/didChange", 0);
+  text = dup_string (changed, "$.contentChanges[0].text");
+  g_assert_cmpstr (text, ==, "int a;\nint b;\n");
+  g_assert_false (has_member (changed, "$.contentChanges[0].range"));
+
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* An untitled document is sent once it has a file; Save As to another
+ * name closes the old name and opens the new one. */
+static void
+test_sync_untitled_and_save_as (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = new_document ("c");
+  g_autofree char *first_path = g_build_filename (fixture->dir, "first.c", NULL);
+  g_autofree char *second_path = g_build_filename (fixture->dir, "second.c", NULL);
+  g_autoptr (GFile) first = g_file_new_for_path (first_path);
+  g_autoptr (GFile) second = g_file_new_for_path (second_path);
+  g_autofree char *first_uri = g_file_get_uri (first);
+  g_autofree char *second_uri = g_file_get_uri (second);
+  g_autoptr (JsonNode) opened = NULL;
+  g_autoptr (JsonNode) reopened = NULL;
+  g_autoptr (JsonNode) closed = NULL;
+  g_autofree char *opened_uri = NULL;
+  g_autofree char *reopened_uri = NULL;
+  g_autofree char *closed_uri = NULL;
+
+  gtk_text_buffer_set_text (GTK_TEXT_BUFFER (document), "int a;\n", -1);
+  palang_lsp_manager_add_document (manager, document);
+  wait_until_ready (manager, document);
+  g_assert_false (palang_lsp_document_is_open (palang_lsp_manager_get_lsp_document (manager, document)));
+
+  save_document (document, first);
+  wait_for_log (fixture, "textDocument/didOpen");
+  opened = get_logged_params (fixture, "textDocument/didOpen", 0);
+  opened_uri = dup_string (opened, "$.textDocument.uri");
+  g_assert_cmpstr (opened_uri, ==, first_uri);
+
+  save_document (document, second);
+  wait_for_log_count (fixture, "textDocument/didOpen", 2);
+  closed = get_logged_params (fixture, "textDocument/didClose", 0);
+  closed_uri = dup_string (closed, "$.textDocument.uri");
+  reopened = get_logged_params (fixture, "textDocument/didOpen", 1);
+  reopened_uri = dup_string (reopened, "$.textDocument.uri");
+  g_assert_cmpstr (closed_uri, ==, first_uri);
+  g_assert_cmpstr (reopened_uri, ==, second_uri);
+
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+  g_unlink (first_path);
+  g_unlink (second_path);
+}
+
+/* After a crash the restarted server gets the document again, with the
+ * text as it is now. */
+static void
+test_sync_reopens_after_restart (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, "--crash-on-change");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "int a;\n");
+  g_autoptr (JsonNode) reopened = NULL;
+  g_autofree char *text = NULL;
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  insert_at (document, 1, 0, "int b;\n");  /* the server crashes on this */
+  wait_for_log_count (fixture, "textDocument/didOpen", 2);
+
+  reopened = get_logged_params (fixture, "textDocument/didOpen", 1);
+  text = dup_string (reopened, "$.textDocument.text");
+  g_assert_cmpstr (text, ==, "int a;\nint b;\n");
+  g_assert_cmpint (get_int (reopened, "$.textDocument.version"), ==, 3);
+
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -576,6 +969,8 @@ main (int   argc,
   gtk_source_init ();
 
   g_test_add_func ("/lsp/languages", test_languages);
+  g_test_add_func ("/lsp/position/utf16", test_position_utf16);
+  g_test_add_func ("/lsp/position/iters", test_position_iters);
 
 #define ADD_TEST(path, func) \
   g_test_add (path, Fixture, NULL, fixture_setup, func, fixture_teardown)
@@ -590,6 +985,10 @@ main (int   argc,
   ADD_TEST ("/lsp/manager/one-server-per-language", test_manager_one_server_per_language);
   ADD_TEST ("/lsp/manager/restarts-on-changes", test_manager_restarts_on_changes);
   ADD_TEST ("/lsp/manager/reports-missing-server-once", test_manager_reports_missing_server_once);
+  ADD_TEST ("/lsp/sync/open-edit-close", test_sync_open_edit_close);
+  ADD_TEST ("/lsp/sync/full-text", test_sync_full_text);
+  ADD_TEST ("/lsp/sync/untitled-and-save-as", test_sync_untitled_and_save_as);
+  ADD_TEST ("/lsp/sync/reopens-after-restart", test_sync_reopens_after_restart);
 
 #undef ADD_TEST
 

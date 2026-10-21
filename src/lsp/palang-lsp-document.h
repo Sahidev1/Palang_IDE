@@ -1,0 +1,61 @@
+/* palang-lsp-document.h — one open document, as a language server sees it.
+ *
+ * Keeps a server's copy of a PalangDocument's text in step with the
+ * buffer ("document sync" in the protocol):
+ *
+ *   didOpen    when the server is ready and the document has a file (an
+ *              untitled document is sent once it is saved), and again
+ *              after the server restarted
+ *   didChange  on every edit: the edited range, or the whole text if the
+ *              server asked for that
+ *   didSave    after saving
+ *   didClose   when the document leaves the server (tab closed, other
+ *              server, Save As to another name: close + open)
+ *
+ * Each change increases the document's version. Replies that were asked
+ * for an older version are stale and should be dropped (2b.3 onwards).
+ *
+ * Created by PalangLspManager, one per tracked document.
+ */
+
+#pragma once
+
+#include <glib-object.h>
+
+#include "palang-document.h"
+#include "palang-lsp-client.h"
+
+G_BEGIN_DECLS
+
+#define PALANG_TYPE_LSP_DOCUMENT (palang_lsp_document_get_type ())
+G_DECLARE_FINAL_TYPE (PalangLspDocument, palang_lsp_document, PALANG, LSP_DOCUMENT, GObject)
+
+/* Returns: (transfer full): an LSP document for @document, not yet on any
+ * server. */
+PalangLspDocument *palang_lsp_document_new          (PalangDocument    *document);
+
+/* Returns: (transfer none): the document. */
+PalangDocument    *palang_lsp_document_get_document (PalangLspDocument *self);
+
+/* Returns: (transfer none) (nullable): the server the document belongs
+ * to. */
+PalangLspClient   *palang_lsp_document_get_client   (PalangLspDocument *self);
+
+/* Moves the document to @client (nullable: to no server). Closes it on
+ * the old server and opens it on the new one as soon as that is ready.
+ * Setting the same client again re-opens the document only if its file or
+ * language changed. */
+void               palang_lsp_document_set_client   (PalangLspDocument *self,
+                                                     PalangLspClient   *client);
+
+/* Returns: TRUE if the server has the document open. */
+gboolean           palang_lsp_document_is_open      (PalangLspDocument *self);
+
+/* Returns: (transfer none) (nullable): the URI the server knows the
+ * document by, NULL if it isn't open. */
+const char        *palang_lsp_document_get_uri      (PalangLspDocument *self);
+
+/* Returns: the version the server has of the text (the last one sent). */
+gint64             palang_lsp_document_get_version  (PalangLspDocument *self);
+
+G_END_DECLS

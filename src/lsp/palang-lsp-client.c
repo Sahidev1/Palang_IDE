@@ -601,6 +601,56 @@ palang_lsp_client_get_capabilities (PalangLspClient *self)
   return self->capabilities;
 }
 
+/* JSON numbers arrive as int64 ("x") or, written like 2.0, as doubles. */
+static gboolean
+get_number (GVariant *value,
+            gint64   *number)
+{
+  if (value == NULL)
+    return FALSE;
+
+  if (g_variant_is_of_type (value, G_VARIANT_TYPE_INT64))
+    *number = g_variant_get_int64 (value);
+  else if (g_variant_is_of_type (value, G_VARIANT_TYPE_DOUBLE))
+    *number = (gint64) g_variant_get_double (value);
+  else
+    return FALSE;
+
+  return TRUE;
+}
+
+/* "textDocumentSync" is either a number (the kind) or an object whose
+ * "change" member is the kind. Missing means none. */
+PalangLspSyncKind
+palang_lsp_client_get_sync_kind (PalangLspClient *self)
+{
+  g_autoptr (GVariant) sync = NULL;
+  g_autoptr (GVariant) change = NULL;
+  gint64 kind = PALANG_LSP_SYNC_NONE;
+
+  g_return_val_if_fail (PALANG_IS_LSP_CLIENT (self), PALANG_LSP_SYNC_NONE);
+
+  if (self->capabilities == NULL ||
+      !g_variant_is_of_type (self->capabilities, G_VARIANT_TYPE_VARDICT))
+    return PALANG_LSP_SYNC_NONE;
+
+  sync = g_variant_lookup_value (self->capabilities, "textDocumentSync", NULL);
+  if (sync != NULL && g_variant_is_of_type (sync, G_VARIANT_TYPE_VARDICT))
+    {
+      change = g_variant_lookup_value (sync, "change", NULL);
+      get_number (change, &kind);
+    }
+  else
+    {
+      get_number (sync, &kind);
+    }
+
+  if (kind == PALANG_LSP_SYNC_FULL || kind == PALANG_LSP_SYNC_INCREMENTAL)
+    return (PalangLspSyncKind) kind;
+
+  return PALANG_LSP_SYNC_NONE;
+}
+
 /* ---- GObject boilerplate ------------------------------------------------ */
 
 static void
