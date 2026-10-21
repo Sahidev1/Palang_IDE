@@ -17,7 +17,9 @@
 
 #include "config.h"
 
+#include "palang-lsp-diagnostics.h"
 #include "palang-lsp-document.h"
+#include "palang-lsp-hover-provider.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
 
@@ -72,6 +74,36 @@ on_client_failed (PalangLspClient  *client,
   g_signal_emit (self, signals[SIGNAL_SERVER_FAILED], 0, message);
 }
 
+/* A server's notification. "publishDiagnostics" goes to the document it
+ * is about (by URI, among the documents on this server). */
+static void
+on_client_notification (PalangLspClient  *client,
+                        const char       *method,
+                        GVariant         *params,
+                        PalangLspManager *self)
+{
+  const char *uri = NULL;
+  gint64 version = -1;
+  g_autoptr (GVariant) diagnostics = NULL;
+
+  if (!g_str_equal (method, "textDocument/publishDiagnostics") ||
+      params == NULL || !g_variant_is_of_type (params, G_VARIANT_TYPE_VARDICT) ||
+      !g_variant_lookup (params, "uri", "&s", &uri))
+    return;
+
+  g_variant_lookup (params, "version", "x", &version);  /* optional */
+  diagnostics = g_variant_lookup_value (params, "diagnostics", NULL);
+
+  for (guint i = 0; i < self->documents->len; i++)
+    {
+      PalangLspDocument *lsp_document = g_ptr_array_index (self->documents, i);
+
+      if (palang_lsp_document_get_client (lsp_document) == client &&
+          g_strcmp0 (palang_lsp_document_get_uri (lsp_document), uri) == 0)
+        palang_lsp_document_set_diagnostics (lsp_document, version, diagnostics);
+    }
+}
+
 /* Returns: (transfer none) (nullable): the client for @server, started
  * now if it wasn't yet. NULL if the user turned this server off or its
  * command is invalid. */
@@ -111,6 +143,7 @@ get_or_start_client (PalangLspManager          *self,
                                   g_strcmp0 (command, default_command) == 0 ? server->install_hint
                                                                             : NULL);
   g_signal_connect (client, "failed", G_CALLBACK (on_client_failed), self);
+  g_signal_connect (client, "notification", G_CALLBACK (on_client_notification), self);
   g_hash_table_insert (self->clients, (gpointer) server->key, client);
 
   palang_lsp_client_start (client);
@@ -290,6 +323,23 @@ palang_lsp_manager_get_client (PalangLspManager *self,
     return NULL;
 
   return g_hash_table_lookup (self->clients, server->key);
+}
+
+void
+palang_lsp_manager_add_view (PalangLspManager *self,
+                             GtkSourceView    *view)
+{
+  g_autoptr (PalangLspHoverProvider) provider = NULL;
+
+  g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
+  g_return_if_fail (GTK_SOURCE_IS_VIEW (view));
+
+  palang_lsp_diagnostics_setup_view (view);
+
+  /* The view's GtkSourceHover keeps its own reference to the provider. */
+  provider = palang_lsp_hover_provider_new (self);
+  gtk_source_hover_add_provider (gtk_source_view_get_hover (view),
+                                 GTK_SOURCE_HOVER_PROVIDER (provider));
 }
 
 PalangLspDocument *

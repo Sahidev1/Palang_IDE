@@ -13,7 +13,11 @@
  *              server, Save As to another name: close + open)
  *
  * Each change increases the document's version. Replies that were asked
- * for an older version are stale and should be dropped (2b.3 onwards).
+ * for an older version are stale and should be dropped.
+ *
+ * It also shows the server's diagnostics in the document (see
+ * palang-lsp-diagnostics.h), and removes them when the document leaves
+ * the server.
  *
  * Created by PalangLspManager, one per tracked document.
  */
@@ -57,5 +61,21 @@ const char        *palang_lsp_document_get_uri      (PalangLspDocument *self);
 
 /* Returns: the version the server has of the text (the last one sent). */
 gint64             palang_lsp_document_get_version  (PalangLspDocument *self);
+
+/* Shows @diagnostics (the "diagnostics" array of publishDiagnostics),
+ * computed by the server for @version (-1 if the server didn't say).
+ * Diagnostics for an older version are dropped: their positions belong to
+ * text that has changed since, and the server sends new ones anyway. */
+void               palang_lsp_document_set_diagnostics (PalangLspDocument *self,
+                                                        gint64             version,
+                                                        GVariant          *diagnostics);
+
+/* Returns: how many diagnostics are shown. */
+guint              palang_lsp_document_get_n_diagnostics (PalangLspDocument *self);
+
+/* Returns: (transfer full) (nullable): the messages of the diagnostics at
+ * @iter, NULL if there are none. */
+char             **palang_lsp_document_dup_messages_at (PalangLspDocument *self,
+                                                       const GtkTextIter *iter);
 
 G_END_DECLS

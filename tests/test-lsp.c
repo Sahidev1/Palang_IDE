@@ -961,6 +961,158 @@ test_sync_reopens_after_restart (Fixture *fixture, gconstpointer data)
   dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
 }
 
+/* ---- Diagnostics -------------------------------------------------------- */
+
+/* Runs the main loop until @lsp_document shows @count diagnostics. */
+static void
+wait_for_diagnostics (PalangLspDocument *lsp_document,
+                      guint              count)
+{
+  gint64 deadline = g_get_monotonic_time () + 10 * G_USEC_PER_SEC;
+
+  while (palang_lsp_document_get_n_diagnostics (lsp_document) != count)
+    {
+      if (g_get_monotonic_time () > deadline)
+        g_error ("Timed out waiting for %u diagnostics (have %u)", count,
+                 palang_lsp_document_get_n_diagnostics (lsp_document));
+      g_main_context_iteration (NULL, FALSE);
+    }
+}
+
+/* Returns: TRUE if the character at @line, @offset has the tag @name. */
+static gboolean
+has_tag_at (PalangDocument *document,
+            int             line,
+            int             offset,
+            const char     *name)
+{
+  GtkTextTagTable *table = gtk_text_buffer_get_tag_table (GTK_TEXT_BUFFER (document));
+  GtkTextTag *tag = gtk_text_tag_table_lookup (table, name);
+  GtkTextIter iter;
+
+  if (tag == NULL)
+    return FALSE;
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, line, offset);
+  return gtk_text_iter_has_tag (&iter, tag);
+}
+
+/* Returns: TRUE if @line has a gutter mark of @category. */
+static gboolean
+has_gutter_mark (PalangDocument *document,
+                 int             line,
+                 const char     *category)
+{
+  GSList *marks = gtk_source_buffer_get_source_marks_at_line (GTK_SOURCE_BUFFER (document),
+                                                             line, category);
+  gboolean found = marks != NULL;
+
+  g_slist_free (marks);
+  return found;
+}
+
+/* The server's errors and warnings are underlined at the right characters
+ * (an emoji before them counts twice for the server), get gutter icons and
+ * messages, follow edits, and go away with the document. */
+static void
+test_diagnostics_shown_and_updated (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path,
+                                                      "--full-sync --diagnose");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  /* Line 1: 😀 is GTK character 0; "meh" starts at 2, "bad" at 6. */
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c",
+                                                       "int bad;\n\xf0\x9f\x98\x80 meh bad\n");
+  PalangLspDocument *lsp_document;
+  PalangLspClient *client;
+  g_auto (GStrv) messages = NULL;
+  GtkTextIter iter, start, end;
+
+  palang_lsp_manager_add_document (manager, document);
+  lsp_document = palang_lsp_manager_get_lsp_document (manager, document);
+  wait_for_diagnostics (lsp_document, 3);
+
+  g_assert_true (has_tag_at (document, 0, 4, "palang-lsp-error"));
+  g_assert_false (has_tag_at (document, 0, 3, "palang-lsp-error"));
+  g_assert_true (has_tag_at (document, 1, 2, "palang-lsp-warning"));
+  g_assert_true (has_tag_at (document, 1, 6, "palang-lsp-error"));
+  g_assert_true (has_tag_at (document, 1, 8, "palang-lsp-error"));
+  g_assert_false (has_tag_at (document, 1, 0, "palang-lsp-error"));
+  g_assert_false (has_tag_at (document, 1, 5, "palang-lsp-error"));
+
+  g_assert_true (has_gutter_mark (document, 0, "palang-lsp-error"));
+  g_assert_true (has_gutter_mark (document, 1, "palang-lsp-error"));
+  g_assert_true (has_gutter_mark (document, 1, "palang-lsp-warning"));
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, 1, 7);
+  messages = palang_lsp_document_dup_messages_at (lsp_document, &iter);
+  g_assert_cmpstrv (messages, ((const char *[]) { "Error: bad (fake)", NULL }));
+  g_clear_pointer (&messages, g_strfreev);
+
+  /* Just after "bad" (the end of its range) still counts; one more
+   * character doesn't. */
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, 1, 9);
+  messages = palang_lsp_document_dup_messages_at (lsp_document, &iter);
+  g_assert_cmpstrv (messages, ((const char *[]) { "Error: bad (fake)", NULL }));
+  g_clear_pointer (&messages, g_strfreev);
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, 0, 1);
+  g_assert_null (palang_lsp_document_dup_messages_at (lsp_document, &iter));
+
+  /* Delete the first "bad": its error goes. */
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &start, 0, 4);
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &end, 0, 7);
+  gtk_text_buffer_delete (GTK_TEXT_BUFFER (document), &start, &end);
+  wait_for_diagnostics (lsp_document, 2);
+  g_assert_false (has_gutter_mark (document, 0, "palang-lsp-error"));
+  g_assert_true (has_tag_at (document, 1, 6, "palang-lsp-error"));
+
+  /* Closing the document removes what was shown. */
+  client = palang_lsp_manager_get_client (manager, document);
+  palang_lsp_manager_remove_document (manager, document);
+  g_assert_false (has_tag_at (document, 1, 6, "palang-lsp-error"));
+  g_assert_false (has_gutter_mark (document, 1, "palang-lsp-error"));
+
+  dispose_manager_and_wait (fixture, manager, client);
+}
+
+/* Diagnostics computed for an older version of the text are dropped. */
+static void
+test_diagnostics_stale_dropped (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "int a;\n");
+  g_autoptr (GVariant) diagnostics = JSONRPC_MESSAGE_NEW_ARRAY (
+    "{",
+      "range", "{",
+        "start", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (0), "character", JSONRPC_MESSAGE_PUT_INT64 (4), "}",
+        "end", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (0), "character", JSONRPC_MESSAGE_PUT_INT64 (5), "}",
+      "}",
+      "message", JSONRPC_MESSAGE_PUT_STRING ("about a"),
+    "}");
+  PalangLspDocument *lsp_document;
+  gint64 version;
+
+  palang_lsp_manager_add_document (manager, document);
+  lsp_document = palang_lsp_manager_get_lsp_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+  version = palang_lsp_document_get_version (lsp_document);
+
+  palang_lsp_document_set_diagnostics (lsp_document, version - 1, diagnostics);
+  g_assert_cmpuint (palang_lsp_document_get_n_diagnostics (lsp_document), ==, 0);
+
+  palang_lsp_document_set_diagnostics (lsp_document, version, diagnostics);
+  g_assert_cmpuint (palang_lsp_document_get_n_diagnostics (lsp_document), ==, 1);
+  /* No severity given: shown as an error. */
+  g_assert_true (has_tag_at (document, 0, 4, "palang-lsp-error"));
+
+  /* Without a version (pylsp sends none), they are always shown. */
+  palang_lsp_document_set_diagnostics (lsp_document, -1, diagnostics);
+  g_assert_cmpuint (palang_lsp_document_get_n_diagnostics (lsp_document), ==, 1);
+
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -989,6 +1141,8 @@ main (int   argc,
   ADD_TEST ("/lsp/sync/full-text", test_sync_full_text);
   ADD_TEST ("/lsp/sync/untitled-and-save-as", test_sync_untitled_and_save_as);
   ADD_TEST ("/lsp/sync/reopens-after-restart", test_sync_reopens_after_restart);
+  ADD_TEST ("/lsp/diagnostics/shown-and-updated", test_diagnostics_shown_and_updated);
+  ADD_TEST ("/lsp/diagnostics/stale-dropped", test_diagnostics_stale_dropped);
 
 #undef ADD_TEST
 

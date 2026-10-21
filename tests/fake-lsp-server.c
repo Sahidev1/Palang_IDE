@@ -6,6 +6,7 @@
  *
  *   fake-lsp-server [--log FILE] [--crash-after-initialized] [--ignore-shutdown]
  *                   [--refuse-initialize] [--full-sync] [--crash-on-change]
+ *                   [--diagnose]
  *
  *   --log FILE                 append every message received to FILE, one
  *                              line each: the method, a space, the params
@@ -20,6 +21,10 @@
  *   --full-sync                ask for the whole text on every change
  *                              (default: only the edited range)
  *   --crash-on-change          exit with status 1 when a didChange arrives
+ *   --diagnose                 after didOpen and (full-text) didChange,
+ *                              publish an error for every "bad" and a
+ *                              warning for every "meh" in the text; use
+ *                              with --full-sync so it always has the text
  *
  * Requests it answers: "initialize", "shutdown", and "fake/echo", which
  * replies with its params.
@@ -32,6 +37,7 @@
 #include <json-glib/json-glib.h>
 #include <jsonrpc-glib.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 static char *log_path;
@@ -40,6 +46,7 @@ static gboolean ignore_shutdown;
 static gboolean refuse_initialize;
 static gboolean full_sync;
 static gboolean crash_on_change;
+static gboolean diagnose;
 static GMainLoop *main_loop;
 
 static void
@@ -111,6 +118,78 @@ on_handle_call (JsonrpcClient *rpc,
   return TRUE;
 }
 
+/* Returns: the UTF-16 length of the first @n_bytes of @text, computed
+ * with GLib's converter (not Palang's code, which is what is tested). */
+static gint64
+utf16_length (const char *text,
+              gsize       n_bytes)
+{
+  glong n_units = 0;
+  g_autofree gunichar2 *converted = g_utf8_to_utf16 (text, (glong) n_bytes, NULL, &n_units, NULL);
+
+  return n_units;
+}
+
+/* Adds a diagnostic for every @word in @text to @builder. */
+static void
+find_word (GVariantBuilder *builder,
+           const char      *text,
+           const char      *word,
+           gint64           severity)
+{
+  g_auto (GStrv) lines = g_strsplit (text, "\n", -1);
+
+  for (guint line = 0; lines[line] != NULL; line++)
+    for (const char *found = strstr (lines[line], word); found != NULL;
+         found = strstr (found + 1, word))
+      {
+        gint64 start = utf16_length (lines[line], found - lines[line]);
+        g_autoptr (GVariant) diagnostic = JSONRPC_MESSAGE_NEW (
+          "range", "{",
+            "start", "{",
+              "line", JSONRPC_MESSAGE_PUT_INT64 (line),
+              "character", JSONRPC_MESSAGE_PUT_INT64 (start),
+            "}",
+            "end", "{",
+              "line", JSONRPC_MESSAGE_PUT_INT64 (line),
+              "character", JSONRPC_MESSAGE_PUT_INT64 (start + utf16_length (word, strlen (word))),
+            "}",
+          "}",
+          "severity", JSONRPC_MESSAGE_PUT_INT64 (severity),
+          "source", JSONRPC_MESSAGE_PUT_STRING ("fake"),
+          "message", JSONRPC_MESSAGE_PUT_STRING (word));
+
+        g_variant_builder_add (builder, "v", diagnostic);
+      }
+}
+
+/* textDocument/publishDiagnostics for @text, version @version of @uri. */
+static void
+publish_diagnostics (JsonrpcClient *rpc,
+                     const char    *uri,
+                     gint64         version,
+                     const char    *text)
+{
+  GVariantBuilder builder;
+  g_autoptr (GVariant) params = NULL;
+  g_autoptr (GVariantDict) dict = NULL;
+
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("av"));
+  find_word (&builder, text, "bad", 1);
+  find_word (&builder, text, "meh", 2);
+
+  params = JSONRPC_MESSAGE_NEW (
+    "uri", JSONRPC_MESSAGE_PUT_STRING (uri),
+    "version", JSONRPC_MESSAGE_PUT_INT64 (version));
+  dict = g_variant_dict_new (params);
+  g_variant_dict_insert_value (dict, "diagnostics", g_variant_builder_end (&builder));
+  g_clear_pointer (&params, g_variant_unref);
+  params = g_variant_ref_sink (g_variant_dict_end (dict));
+
+  jsonrpc_client_send_notification_async (rpc, "textDocument/publishDiagnostics", params,
+                                          NULL, NULL, NULL);
+}
+
 static void
 on_notification (JsonrpcClient *rpc,
                  const char    *method,
@@ -124,6 +203,47 @@ on_notification (JsonrpcClient *rpc,
     _exit (1);
   if (g_str_equal (method, "textDocument/didChange") && crash_on_change)
     _exit (1);
+
+  if (diagnose && g_str_equal (method, "textDocument/didOpen"))
+    {
+      const char *uri = NULL, *text = NULL;
+      gint64 version = 0;
+
+      if (JSONRPC_MESSAGE_PARSE (params, "textDocument", "{",
+                                   "uri", JSONRPC_MESSAGE_GET_STRING (&uri),
+                                   "version", JSONRPC_MESSAGE_GET_INT64 (&version),
+                                   "text", JSONRPC_MESSAGE_GET_STRING (&text),
+                                 "}"))
+        publish_diagnostics (rpc, uri, version, text);
+    }
+
+  /* With --full-sync, the one change is the whole new text. */
+  if (diagnose && g_str_equal (method, "textDocument/didChange"))
+    {
+      const char *uri = NULL, *text = NULL;
+      gint64 version = 0;
+      g_autoptr (GVariant) changes = NULL;
+      g_autoptr (GVariant) first = NULL;
+
+      if (JSONRPC_MESSAGE_PARSE (params, "textDocument", "{",
+                                   "uri", JSONRPC_MESSAGE_GET_STRING (&uri),
+                                   "version", JSONRPC_MESSAGE_GET_INT64 (&version),
+                                 "}") &&
+          (changes = g_variant_lookup_value (params, "contentChanges", NULL)) != NULL &&
+          g_variant_n_children (changes) > 0)
+        {
+          first = g_variant_get_child_value (changes, 0);
+          if (g_variant_is_of_type (first, G_VARIANT_TYPE_VARIANT))
+            {
+              GVariant *unboxed = g_variant_get_variant (first);
+
+              g_variant_unref (first);
+              first = unboxed;
+            }
+          if (g_variant_lookup (first, "text", "&s", &text))
+            publish_diagnostics (rpc, uri, version, text);
+        }
+    }
 
   if (g_str_equal (method, "exit") && !ignore_shutdown)
     g_main_loop_quit (main_loop);
@@ -148,6 +268,7 @@ main (int   argc,
     { "refuse-initialize", 0, 0, G_OPTION_ARG_NONE, &refuse_initialize, NULL, NULL },
     { "full-sync", 0, 0, G_OPTION_ARG_NONE, &full_sync, NULL, NULL },
     { "crash-on-change", 0, 0, G_OPTION_ARG_NONE, &crash_on_change, NULL, NULL },
+    { "diagnose", 0, 0, G_OPTION_ARG_NONE, &diagnose, NULL, NULL },
     { NULL }
   };
   g_autoptr (GOptionContext) context = g_option_context_new (NULL);

@@ -4,6 +4,9 @@
  * is the project. The manager starts one language server (PalangLspClient)
  * per server needed by those documents: opening the first .py file starts
  * pylsp, the first .c or .h file clangd. A server serves the whole folder.
+ * Each document is kept in sync with its server (PalangLspDocument), and
+ * the server's diagnostics are shown in it; views set up with
+ * palang_lsp_manager_add_view () show them in the gutter and on hover.
  *
  * Servers are started again when the folder changes, when the command of
  * a server changes in the settings (e.g. `palang set python-server …`),
@@ -45,6 +48,12 @@ void              palang_lsp_manager_add_document    (PalangLspManager *self,
                                                       PalangDocument   *document);
 void              palang_lsp_manager_remove_document (PalangLspManager *self,
                                                       PalangDocument   *document);
+
+/* Sets up @view (showing one of the added documents) for language
+ * features: icons in the gutter, messages when the pointer rests on an
+ * underlined range. */
+void              palang_lsp_manager_add_view        (PalangLspManager *self,
+                                                      GtkSourceView    *view);
 
 /* Stops every server and starts the ones the open documents need. Also
  * tries again servers that had failed. */

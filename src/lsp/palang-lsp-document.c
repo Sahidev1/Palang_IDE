@@ -16,6 +16,7 @@
 
 #include <jsonrpc-glib.h>
 
+#include "palang-lsp-diagnostics.h"
 #include "palang-lsp-document.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-position.h"
@@ -33,6 +34,8 @@ struct _PalangLspDocument
   char *open_language_id;
 
   gint64 version;  /* last version sent; only ever grows */
+
+  PalangLspDiagnostics *diagnostics;  /* owned */
 };
 
 G_DEFINE_FINAL_TYPE (PalangLspDocument, palang_lsp_document, G_TYPE_OBJECT)
@@ -115,6 +118,8 @@ close_document (PalangLspDocument *self)
     "}");
   palang_lsp_client_notify (self->client, "textDocument/didClose", params);
 
+  /* The server's diagnostics don't apply once it no longer has the file. */
+  palang_lsp_diagnostics_clear (self->diagnostics);
   g_clear_pointer (&self->open_uri, g_free);
   g_clear_pointer (&self->open_language_id, g_free);
 }
@@ -125,6 +130,7 @@ static void
 on_client_ready (PalangLspClient   *client,
                  PalangLspDocument *self)
 {
+  palang_lsp_diagnostics_clear (self->diagnostics);
   g_clear_pointer (&self->open_uri, g_free);
   g_clear_pointer (&self->open_language_id, g_free);
   open_document (self);
@@ -292,6 +298,45 @@ on_saved (PalangDocument    *document,
   palang_lsp_client_notify (self->client, "textDocument/didSave", params);
 }
 
+/* ---- Diagnostics -------------------------------------------------------- */
+
+void
+palang_lsp_document_set_diagnostics (PalangLspDocument *self,
+                                     gint64             version,
+                                     GVariant          *diagnostics)
+{
+  g_return_if_fail (PALANG_IS_LSP_DOCUMENT (self));
+
+  if (self->open_uri == NULL)
+    return;
+
+  if (version >= 0 && version < self->version)
+    {
+      g_debug ("Dropping diagnostics for version %" G_GINT64_FORMAT " of %s (now %" G_GINT64_FORMAT ")",
+               version, self->open_uri, self->version);
+      return;
+    }
+
+  palang_lsp_diagnostics_set (self->diagnostics, diagnostics);
+}
+
+guint
+palang_lsp_document_get_n_diagnostics (PalangLspDocument *self)
+{
+  g_return_val_if_fail (PALANG_IS_LSP_DOCUMENT (self), 0);
+
+  return palang_lsp_diagnostics_get_count (self->diagnostics);
+}
+
+char **
+palang_lsp_document_dup_messages_at (PalangLspDocument *self,
+                                     const GtkTextIter *iter)
+{
+  g_return_val_if_fail (PALANG_IS_LSP_DOCUMENT (self), NULL);
+
+  return palang_lsp_diagnostics_dup_messages_at (self->diagnostics, iter);
+}
+
 /* ---- Getters ------------------------------------------------------------ */
 
 PalangDocument *
@@ -344,6 +389,8 @@ palang_lsp_document_dispose (GObject *object)
   /* Closes the document on its server. */
   palang_lsp_document_set_client (self, NULL);
 
+  /* Before the document goes: the diagnostics live in its buffer. */
+  g_clear_pointer (&self->diagnostics, palang_lsp_diagnostics_free);
   if (self->document != NULL)
     g_signal_handlers_disconnect_by_data (self->document, self);
   g_clear_object (&self->document);
@@ -371,6 +418,7 @@ palang_lsp_document_new (PalangDocument *document)
 
   self = g_object_new (PALANG_TYPE_LSP_DOCUMENT, NULL);
   self->document = g_object_ref (document);
+  self->diagnostics = palang_lsp_diagnostics_new (GTK_SOURCE_BUFFER (document));
 
   g_signal_connect (document, "insert-text", G_CALLBACK (on_insert_text), self);
   g_signal_connect (document, "delete-range", G_CALLBACK (on_delete_range), self);

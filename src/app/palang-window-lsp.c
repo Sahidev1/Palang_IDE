@@ -5,7 +5,8 @@
  * informed:
  *
  *   - the project folder: bound to the file tree's root
- *   - the open documents: every tab added to or removed from the tab view
+ *   - the open documents: every tab added to or removed from the tab view,
+ *     and its view (for the diagnostics' gutter icons and hover popups)
  *
  * The manager starts the servers those documents need. When one can't be
  * started (not installed, keeps crashing), its message is shown as a
@@ -18,10 +19,10 @@
 
 #include "palang-window-private.h"
 
-static PalangDocument *
-document_for_page (AdwTabPage *page)
+static PalangEditor *
+editor_for_page (AdwTabPage *page)
 {
-  return palang_editor_get_document (PALANG_EDITOR (adw_tab_page_get_child (page)));
+  return PALANG_EDITOR (adw_tab_page_get_child (page));
 }
 
 /* "page-attached" and "page-detached" are AdwTabView's signals for a tab
@@ -32,7 +33,10 @@ on_page_attached (AdwTabView   *tab_view,
                   int           position,
                   PalangWindow *self)
 {
-  palang_lsp_manager_add_document (self->lsp_manager, document_for_page (page));
+  PalangEditor *editor = editor_for_page (page);
+
+  palang_lsp_manager_add_document (self->lsp_manager, palang_editor_get_document (editor));
+  palang_lsp_manager_add_view (self->lsp_manager, palang_editor_get_view (editor));
 }
 
 static void
@@ -41,7 +45,8 @@ on_page_detached (AdwTabView   *tab_view,
                   int           position,
                   PalangWindow *self)
 {
-  palang_lsp_manager_remove_document (self->lsp_manager, document_for_page (page));
+  palang_lsp_manager_remove_document (self->lsp_manager,
+                                      palang_editor_get_document (editor_for_page (page)));
 }
 
 /* The toast's "Details" button: the whole message in a dialog. The text
