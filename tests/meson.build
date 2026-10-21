@@ -38,6 +38,14 @@ test_command_line = executable('test-command-line',
 )
 test('command-line', test_command_line, env: test_env)
 
+test_search = executable('test-search',
+  'test-search.c',
+  link_with: libpalang,
+  dependencies: palang_deps,
+  include_directories: [config_inc, palang_inc],
+)
+test('search', test_search, env: test_env)
+
 # UI tests need a display. Use a virtual one (xvfb-run) when installed, so
 # they also work without a desktop session; otherwise use the current one.
 xvfb_run = find_program('xvfb-run', required: false)

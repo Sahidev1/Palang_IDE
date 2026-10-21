@@ -100,6 +100,7 @@ static const struct {
   { "win.go-to-line",     "Go to Line…",       "<Control>g" },
   { "win.toggle-sidebar", "Toggle Sidebar",    "F9" },
   { "win.toggle-panel",   "Toggle Panel",      "<Control>j" },
+  { "win.search-project", "Search in Folder…", "<Control><Shift>f" },
   { "app.preferences",    "Preferences",       "<Control>comma" },
   { "app.quit",           "Quit",              "<Control>q" },
 };

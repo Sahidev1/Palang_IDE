@@ -6,6 +6,7 @@
     <file>ui/palang-panel.ui</file>
     <file>ui/palang-preferences-dialog.ui</file>
     <file>ui/palang-search-bar.ui</file>
+    <file>ui/palang-search-panel.ui</file>
     <file>ui/palang-window.ui</file>
   </gresource>
 </gresources>

@@ -1,5 +1,5 @@
-palang_deps = [gtk_dep, adw_dep, gtksource_dep, vte_dep]
-palang_inc  = include_directories('app', 'editor', 'palette', 'settings', 'terminal',
+palang_deps = [gtk_dep, adw_dep, gtksource_dep, vte_dep, json_dep]
+palang_inc  = include_directories('app', 'editor', 'palette', 'search', 'settings', 'terminal',
                                   'workspace')
 
 # Everything except main.c lives in a static library, so unit tests can link
@@ -16,6 +16,10 @@ libpalang = static_library('palang',
   'editor/palang-editor.c',
   'editor/palang-search-bar.c',
   'palette/palang-command.c',
+  'search/palang-rg.c',
+  'search/palang-search.c',
+  'search/palang-search-match.c',
+  'search/palang-search-panel.c',
   'settings/palang-appearance.c',
   'settings/palang-settings.c',
   'terminal/palang-terminal.c',

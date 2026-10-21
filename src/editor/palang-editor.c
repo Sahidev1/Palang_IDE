@@ -24,6 +24,11 @@ struct _PalangEditor
   AdwBanner     *disk_banner;
   GtkRevealer   *go_to_revealer;
   GtkEntry      *go_to_entry;
+
+  /* While palang_editor_go_to () waits for the cursor to come into view
+   * (see keep_scrolling_to_cursor). */
+  guint scroll_tick_id;
+  guint scroll_frames_left;
 };
 
 G_DEFINE_FINAL_TYPE (PalangEditor, palang_editor, ADW_TYPE_BIN)
@@ -331,6 +336,67 @@ parse_go_to_spec (const char *spec,
   return TRUE;
 }
 
+/* Scrolls so the cursor is in view, a third from the top. */
+static void
+scroll_to_cursor (PalangEditor *self)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (self->document);
+
+  gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (self->view),
+                                gtk_text_buffer_get_insert (buffer),
+                                0, TRUE, 0, 0.3);
+}
+
+static gboolean
+cursor_is_visible (PalangEditor *self)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (self->document);
+  GtkTextIter cursor;
+  GdkRectangle visible;
+  GdkRectangle location;
+
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+  gtk_text_view_get_visible_rect (GTK_TEXT_VIEW (self->view), &visible);
+  gtk_text_view_get_iter_location (GTK_TEXT_VIEW (self->view), &cursor, &location);
+
+  return visible.height > 0 &&
+         location.y >= visible.y &&
+         location.y + location.height <= visible.y + visible.height;
+}
+
+/* Scrolling a text view right after it was created (a tab opened a moment
+ * ago) doesn't work: it learns its own height, and then the height of its
+ * lines, only over its first few frames. So we try again on each frame
+ * until the cursor is visible, for about a second at most.
+ *
+ * A "tick callback" runs before every frame GTK draws for the widget,
+ * until it returns G_SOURCE_REMOVE. */
+static gboolean
+keep_scrolling_to_cursor (GtkWidget     *view,
+                          GdkFrameClock *frame_clock,
+                          gpointer       user_data)
+{
+  PalangEditor *self = PALANG_EDITOR (user_data);
+
+  if (gtk_widget_get_height (view) > 0)
+    {
+      if (cursor_is_visible (self))
+        {
+          self->scroll_tick_id = 0;
+          return G_SOURCE_REMOVE;
+        }
+      scroll_to_cursor (self);
+    }
+
+  if (--self->scroll_frames_left == 0)
+    {
+      self->scroll_tick_id = 0;
+      return G_SOURCE_REMOVE;
+    }
+
+  return G_SOURCE_CONTINUE;
+}
+
 gboolean
 palang_editor_go_to (PalangEditor *self,
                      const char   *spec)
@@ -359,9 +425,14 @@ palang_editor_go_to (PalangEditor *self,
                                              gtk_text_iter_get_line_offset (&line_end)));
 
   gtk_text_buffer_place_cursor (buffer, &iter);
-  gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (self->view),
-                                gtk_text_buffer_get_insert (buffer),
-                                0, TRUE, 0, 0.3);
+  scroll_to_cursor (self);
+
+  /* Make sure it ends up in view (see keep_scrolling_to_cursor). */
+  if (self->scroll_tick_id != 0)
+    gtk_widget_remove_tick_callback (GTK_WIDGET (self->view), self->scroll_tick_id);
+  self->scroll_frames_left = 60;
+  self->scroll_tick_id = gtk_widget_add_tick_callback (GTK_WIDGET (self->view),
+                                                       keep_scrolling_to_cursor, self, NULL);
   return TRUE;
 }
 
@@ -533,6 +604,10 @@ static void
 palang_editor_dispose (GObject *object)
 {
   PalangEditor *self = PALANG_EDITOR (object);
+
+  if (self->scroll_tick_id != 0 && self->view != NULL)
+    gtk_widget_remove_tick_callback (GTK_WIDGET (self->view), self->scroll_tick_id);
+  self->scroll_tick_id = 0;
 
   gtk_widget_dispose_template (GTK_WIDGET (self), PALANG_TYPE_EDITOR);
   g_clear_object (&self->document);

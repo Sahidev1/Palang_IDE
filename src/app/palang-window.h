@@ -11,6 +11,7 @@
 #include "palang-application.h"
 #include "palang-editor.h"
 #include "palang-panel.h"
+#include "palang-search-panel.h"
 #include "palang-session.h"
 #include "palang-terminal.h"
 
@@ -27,6 +28,13 @@ PalangWindow *palang_window_new               (PalangApplication *application);
  * Loading happens in the background; errors are shown as a toast. */
 void          palang_window_open_file         (PalangWindow *self,
                                                GFile        *file);
+
+/* Like palang_window_open_file (), then puts the cursor at @line and
+ * @column (both counted from 1, the column in characters). */
+void          palang_window_open_file_at      (PalangWindow *self,
+                                               GFile        *file,
+                                               guint         line,
+                                               guint         column);
 
 /* Shows @folder in the sidebar's folder tree. */
 void          palang_window_open_folder       (PalangWindow *self,
@@ -48,6 +56,9 @@ PalangPanel  *palang_window_get_panel         (PalangWindow *self);
 
 /* Returns: (transfer none): the terminal, a page of the panel. */
 PalangTerminal *palang_window_get_terminal    (PalangWindow *self);
+
+/* Returns: (transfer none): project search, a page of the panel. */
+PalangSearchPanel *palang_window_get_search_panel (PalangWindow *self);
 
 /* Returns: (transfer full): what's open now, for saving (see
  * palang-session.h). Never-saved documents are left out. */

@@ -43,6 +43,10 @@
         <attribute name="label">_Go to Line…</attribute>
         <attribute name="action">win.go-to-line</attribute>
       </item>
+      <item>
+        <attribute name="label">Search in _Folder…</attribute>
+        <attribute name="action">win.search-project</attribute>
+      </item>
     </section>
     <section>
       <item>

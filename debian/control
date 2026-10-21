@@ -10,6 +10,8 @@ Build-Depends: debhelper-compat (= 13),
                libadwaita-1-dev (>= 1.5),
                libgtksourceview-5-dev (>= 5.12),
                libvte-2.91-gtk4-dev (>= 0.76),
+               libjson-glib-dev (>= 1.8),
+               ripgrep,
                desktop-file-utils,
                xvfb,
                xauth
@@ -18,7 +20,7 @@ Rules-Requires-Root: no
 
 Package: palang
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, ripgrep
 Description: lightweight native IDE for Linux
  Palang is a fast, lightweight code editor built with GTK 4, libadwaita
  and GtkSourceView: tabs, a folder tree, find and replace, syntax

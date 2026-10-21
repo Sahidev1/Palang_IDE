@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The Search page of the bottom panel. Behaviour lives in
+     src/search/palang-search-panel.c. -->
+<interface>
+  <template class="PalangSearchPanel" parent="AdwBin">
+    <property name="child">
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <!-- Search box and the same three toggles as the Find bar. -->
+        <child>
+          <object class="GtkBox">
+            <property name="spacing">6</property>
+            <property name="margin-start">6</property>
+            <property name="margin-end">6</property>
+            <property name="margin-top">6</property>
+            <child>
+              <object class="GtkSearchEntry" id="entry">
+                <property name="hexpand">true</property>
+                <property name="placeholder-text">Search in the folder</property>
+                <!-- Wait for a pause in typing before searching. -->
+                <property name="search-delay">300</property>
+                <signal name="search-changed" handler="on_search_changed"/>
+                <signal name="activate" handler="on_search_changed"/>
+                <signal name="stop-search" handler="on_stop_search"/>
+              </object>
+            </child>
+            <child>
+              <object class="GtkToggleButton" id="case_button">
+                <property name="label">Aa</property>
+                <property name="tooltip-text">Match Case</property>
+                <signal name="toggled" handler="on_option_toggled"/>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkToggleButton" id="word_button">
+                <property name="label">W</property>
+                <property name="tooltip-text">Match Whole Words</property>
+                <signal name="toggled" handler="on_option_toggled"/>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkToggleButton" id="regex_button">
+                <property name="label">.*</property>
+                <property name="tooltip-text">Use Regular Expression</property>
+                <signal name="toggled" handler="on_option_toggled"/>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <!-- "Searching…", "12 results in 3 files", or an error. -->
+        <child>
+          <object class="GtkLabel" id="status_label">
+            <property name="xalign">0</property>
+            <property name="ellipsize">end</property>
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <property name="margin-top">6</property>
+            <property name="margin-bottom">6</property>
+            <style>
+              <class name="dim-label"/>
+              <class name="caption"/>
+            </style>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="vexpand">true</property>
+            <property name="child">
+              <!-- Model and row widgets are set up in palang-search-panel.c. -->
+              <object class="GtkListView" id="list_view">
+                <property name="single-click-activate">true</property>
+                <signal name="activate" handler="on_activate"/>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

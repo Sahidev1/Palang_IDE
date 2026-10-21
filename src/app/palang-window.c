@@ -22,6 +22,7 @@
 #include "palang-file-tree.h"
 #include "palang-panel.h"
 #include "palang-save-flow.h"
+#include "palang-search-panel.h"
 #include "palang-terminal.h"
 #include "palang-window.h"
 
@@ -42,7 +43,8 @@ struct _PalangWindow
   PalangPanel     *panel;
 
   /* Pages of the panel, created in init */
-  PalangTerminal  *terminal;
+  PalangTerminal    *terminal;
+  PalangSearchPanel *search_panel;
 
   /* The panel's height while it's hidden, measured like GtkPaned does:
    * from the divider to the bottom (see panel_height_on_screen). */
@@ -287,13 +289,31 @@ palang_window_new_document (PalangWindow *self)
 
 /* ---- Opening files ------------------------------------------------------ */
 
+/* What to do once a file has loaded: which window, and where to put the
+ * cursor ("12:5", or NULL to leave it at the start). */
+typedef struct {
+  PalangWindow *window;    /* owned */
+  char         *position;  /* owned, nullable */
+} OpenData;
+
+static void
+open_data_free (OpenData *data)
+{
+  g_clear_object (&data->window);
+  g_free (data->position);
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (OpenData, open_data_free)
+
 static void
 on_file_loaded (GObject      *source,
                 GAsyncResult *result,
                 gpointer      user_data)
 {
   PalangDocument *document = PALANG_DOCUMENT (source);
-  g_autoptr (PalangWindow) self = user_data;  /* reference taken in open_file */
+  g_autoptr (OpenData) data = user_data;  /* created in open_file_at */
+  PalangWindow *self = data->window;
   g_autoptr (GError) error = NULL;
   PalangEditor *active;
 
@@ -316,29 +336,65 @@ on_file_loaded (GObject      *source,
                              adw_tab_view_get_selected_page (self->tab_view));
 
   add_editor (self, document);
+  if (data->position != NULL)
+    palang_editor_go_to (palang_window_get_active_editor (self), data->position);
+}
+
+/* @position: (nullable): "line:column" for palang_editor_go_to (). */
+static void
+open_file_at (PalangWindow *self,
+              GFile        *file,
+              const char   *position)
+{
+  g_autoptr (PalangDocument) document = NULL;
+  AdwTabPage *existing;
+  OpenData *data;
+
+  existing = find_page_for_file (self, file);
+  if (existing != NULL)
+    {
+      adw_tab_view_set_selected_page (self->tab_view, existing);
+      if (position != NULL)
+        {
+          palang_editor_go_to (editor_for_page (existing), position);
+          gtk_widget_grab_focus (GTK_WIDGET (editor_for_page (existing)));
+        }
+      return;
+    }
+
+  /* The load operation keeps the document alive until on_file_loaded; we
+   * pass a reference to the window along so it can't disappear meanwhile. */
+  data = g_new0 (OpenData, 1);
+  data->window = g_object_ref (self);
+  data->position = g_strdup (position);
+
+  document = palang_document_new ();
+  palang_document_load_async (document, file, NULL, on_file_loaded, data);
 }
 
 void
 palang_window_open_file (PalangWindow *self,
                          GFile        *file)
 {
-  g_autoptr (PalangDocument) document = NULL;
-  AdwTabPage *existing;
+  g_return_if_fail (PALANG_IS_WINDOW (self));
+  g_return_if_fail (G_IS_FILE (file));
+
+  open_file_at (self, file, NULL);
+}
+
+void
+palang_window_open_file_at (PalangWindow *self,
+                            GFile        *file,
+                            guint         line,
+                            guint         column)
+{
+  g_autofree char *position = NULL;
 
   g_return_if_fail (PALANG_IS_WINDOW (self));
   g_return_if_fail (G_IS_FILE (file));
 
-  existing = find_page_for_file (self, file);
-  if (existing != NULL)
-    {
-      adw_tab_view_set_selected_page (self->tab_view, existing);
-      return;
-    }
-
-  /* The load operation keeps the document alive until on_file_loaded; we
-   * pass a reference to the window along so it can't disappear meanwhile. */
-  document = palang_document_new ();
-  palang_document_load_async (document, file, NULL, on_file_loaded, g_object_ref (self));
+  position = g_strdup_printf ("%u:%u", line, column);
+  open_file_at (self, file, position);
 }
 
 static void
@@ -865,6 +921,7 @@ add_terminal_page (PalangWindow *self)
 static const char * const commands_kept_in_terminal[] = {
   "win.toggle-panel",
   "win.toggle-sidebar",
+  "win.search-project",
   "app.preferences",
   "app.quit",
 };
@@ -921,6 +978,41 @@ on_window_key_pressed (GtkEventControllerKey *controller,
 
   return palang_terminal_forward_key (self->terminal, controller) ? GDK_EVENT_STOP
                                                                   : GDK_EVENT_PROPAGATE;
+}
+
+/* The search page. It searches the project folder (bound to the file
+ * tree's root, like the terminal), and a clicked result opens its file at
+ * the match. */
+static void
+on_search_match_activated (PalangSearchPanel *panel,
+                           PalangSearchMatch *match,
+                           PalangWindow      *self)
+{
+  palang_window_open_file_at (self, palang_search_match_get_file (match),
+                              palang_search_match_get_line (match),
+                              palang_search_match_get_column (match));
+}
+
+static void
+add_search_page (PalangWindow *self)
+{
+  self->search_panel = palang_search_panel_new ();
+
+  g_object_bind_property (self->file_tree, "root", self->search_panel, "folder",
+                          G_BINDING_SYNC_CREATE);
+  g_signal_connect (self->search_panel, "match-activated",
+                    G_CALLBACK (on_search_match_activated), self);
+
+  palang_panel_add_page (self->panel, GTK_WIDGET (self->search_panel),
+                         "search", "Search", "system-search-symbolic");
+}
+
+PalangSearchPanel *
+palang_window_get_search_panel (PalangWindow *self)
+{
+  g_return_val_if_fail (PALANG_IS_WINDOW (self), NULL);
+
+  return self->search_panel;
 }
 
 PalangTerminal *
@@ -1160,6 +1252,29 @@ toggle_panel_action (GtkWidget  *widget,
     palang_panel_focus_page (self->panel);
 }
 
+/* Ctrl+Shift+F: the Search page, with the selected text (if it's on one
+ * line) as what to search for. */
+static void
+search_project_action (GtkWidget  *widget,
+                       const char *action_name,
+                       GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  PalangEditor *editor = palang_window_get_active_editor (self);
+  g_autofree char *selected = NULL;
+  GtkTextIter start, end;
+
+  if (editor != NULL &&
+      gtk_text_buffer_get_selection_bounds (GTK_TEXT_BUFFER (palang_editor_get_document (editor)),
+                                            &start, &end) &&
+      gtk_text_iter_get_line (&start) == gtk_text_iter_get_line (&end))
+    selected = gtk_text_iter_get_text (&start, &end);
+
+  gtk_widget_set_visible (GTK_WIDGET (self->panel), TRUE);
+  palang_panel_set_visible_page (self->panel, "search");
+  palang_search_panel_focus (self->search_panel, selected);
+}
+
 /* Find / Replace / Go to line: forwarded to the editor in the current tab. */
 
 static void
@@ -1316,6 +1431,7 @@ palang_window_class_init (PalangWindowClass *klass)
   gtk_widget_class_install_action (widget_class, "win.open-folder", NULL, open_folder_action);
   gtk_widget_class_install_action (widget_class, "win.toggle-sidebar", NULL, toggle_sidebar_action);
   gtk_widget_class_install_action (widget_class, "win.toggle-panel", NULL, toggle_panel_action);
+  gtk_widget_class_install_action (widget_class, "win.search-project", NULL, search_project_action);
   gtk_widget_class_install_action (widget_class, "win.save", NULL, save_action);
   gtk_widget_class_install_action (widget_class, "win.save-as", NULL, save_as_action);
   gtk_widget_class_install_action (widget_class, "win.save-all", NULL, save_all_action);
@@ -1355,6 +1471,7 @@ palang_window_init (PalangWindow *self)
                     G_CALLBACK (on_panel_visible_changed), self);
 
   add_terminal_page (self);
+  add_search_page (self);
 
   /* Start in the "no tabs" state. */
   on_n_pages_changed (self->tab_view, NULL, self);

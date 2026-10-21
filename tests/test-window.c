@@ -698,6 +698,103 @@ test_terminal_follows_folder (Fixture *fixture, gconstpointer data)
   g_assert_true (g_file_equal (palang_terminal_get_directory (terminal), folder));
 }
 
+static gboolean
+cursor_line_is_visible (PalangWindow *window, gpointer line)
+{
+  PalangEditor *editor = palang_window_get_active_editor (window);
+  GtkTextView *view;
+  GtkTextBuffer *buffer;
+  GtkTextIter cursor;
+  GdkRectangle visible, location;
+
+  if (editor == NULL)
+    return FALSE;
+
+  view = GTK_TEXT_VIEW (palang_editor_get_view (editor));
+  buffer = gtk_text_view_get_buffer (view);
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+  if (gtk_text_iter_get_line (&cursor) + 1 != GPOINTER_TO_INT (line))
+    return FALSE;
+
+  gtk_text_view_get_visible_rect (view, &visible);
+  gtk_text_view_get_iter_location (view, &cursor, &location);
+  return visible.height > 0 &&
+         location.y >= visible.y && location.y + location.height <= visible.y + visible.height;
+}
+
+/* Opening a file at a line (what a search result does) puts the cursor
+ * there and scrolls it into view, also in a tab that was just created. */
+static void
+test_open_file_at (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GString) contents = g_string_new (NULL);
+  g_autoptr (GFile) file = NULL;
+  GtkTextIter cursor;
+  GtkTextBuffer *buffer;
+
+  for (guint i = 1; i <= 300; i++)
+    g_string_append_printf (contents, "line %u\n", i);
+  file = write_file (fixture, "long.txt", contents->str);
+
+  show_window (fixture->window);
+  palang_window_open_file_at (fixture->window, file, 200, 3);
+  wait_until (fixture->window, cursor_line_is_visible, GINT_TO_POINTER (200));
+
+  buffer = GTK_TEXT_BUFFER (palang_editor_get_document (palang_window_get_active_editor (fixture->window)));
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+  g_assert_cmpint (gtk_text_iter_get_line_offset (&cursor), ==, 2);
+
+  /* Again, in the tab that is already open. */
+  palang_window_open_file_at (fixture->window, file, 20, 1);
+  wait_until (fixture->window, cursor_line_is_visible, GINT_TO_POINTER (20));
+  g_assert_cmpuint (palang_window_get_n_editors (fixture->window), ==, 1);
+}
+
+static gboolean
+search_has_finished (PalangWindow *window, gpointer data)
+{
+  PalangSearch *search = palang_search_panel_get_search (palang_window_get_search_panel (window));
+
+  return !palang_search_is_running (search) &&
+         g_list_model_get_n_items (palang_search_get_results (search)) > 0;
+}
+
+/* Ctrl+Shift+F searches the project folder; activating a result opens its
+ * file at the match. */
+static void
+test_project_search (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (GFile) folder = g_file_new_for_path (fixture->dir);
+  g_autoptr (GFile) file = write_file (fixture, "found.c", "a\nb\nint needle;\n");
+  PalangSearchPanel *search_panel = palang_window_get_search_panel (fixture->window);
+  PalangSearch *search = palang_search_panel_get_search (search_panel);
+  g_autoptr (PalangSearchMatch) match = NULL;
+  g_autofree char *rg = g_find_program_in_path ("rg");
+
+  if (rg == NULL)
+    {
+      g_test_skip ("ripgrep (rg) is not installed");
+      return;
+    }
+
+  show_window (fixture->window);
+  palang_window_open_folder (fixture->window, folder);
+  g_assert_true (g_file_equal (palang_search_panel_get_folder (search_panel), folder));
+
+  /* Without a selection, Ctrl+Shift+F just shows the page. */
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.search-project", NULL);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (palang_window_get_panel (fixture->window))));
+  g_assert_cmpstr (palang_panel_get_visible_page (palang_window_get_panel (fixture->window)), ==, "search");
+
+  palang_search_panel_focus (search_panel, "needle");
+  wait_until (fixture->window, search_has_finished, NULL);
+
+  match = g_list_model_get_item (palang_search_get_results (search), 0);
+  g_signal_emit_by_name (search_panel, "match-activated", match);
+  wait_until (fixture->window, active_file_is, file);
+  wait_until (fixture->window, cursor_line_is_visible, GINT_TO_POINTER (3));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -733,6 +830,8 @@ main (int   argc,
   ADD_TEST ("/window/panel-session", test_panel_session);
   ADD_TEST ("/window/active-editor-property", test_active_editor_property);
   ADD_TEST ("/window/terminal-follows-folder", test_terminal_follows_folder);
+  ADD_TEST ("/window/open-file-at", test_open_file_at);
+  ADD_TEST ("/window/project-search", test_project_search);
 
 #undef ADD_TEST
 
