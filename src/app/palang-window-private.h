@@ -8,6 +8,7 @@
  *   palang-window-panel.c    the bottom panel, its Terminal and Search
  *                            pages, and handing keys to the terminal
  *   palang-window-palette.c  the command palette and Quick Open
+ *   palang-window-lsp.c      language servers for the open documents
  *
  * This header gives those files the window's struct and the few functions
  * they call in each other. It is *private*: only palang-window*.c include
@@ -21,6 +22,7 @@
 #pragma once
 
 #include "palang-file-tree.h"
+#include "palang-lsp-manager.h"
 #include "palang-palette.h"
 #include "palang-panel.h"
 #include "palang-search-panel.h"
@@ -48,6 +50,9 @@ struct _PalangWindow
   /* Pages of the panel, created in init */
   PalangTerminal    *terminal;
   PalangSearchPanel *search_panel;
+
+  /* The language servers of the open documents (palang-window-lsp.c) */
+  PalangLspManager  *lsp_manager;
 
   /* The open palette, if any (not owned; see show_palette), and the
    * action that opened it. */
@@ -93,5 +98,18 @@ int  _palang_window_get_panel_height (PalangWindow *self);
 
 /* Installs win.command-palette and win.quick-open. Called from class_init. */
 void _palang_window_class_init_palette (GtkWidgetClass *widget_class);
+
+/* palang-window-lsp.c */
+
+/* Installs win.restart-language-servers. Called from class_init. */
+void _palang_window_class_init_lsp     (GtkWidgetClass *widget_class);
+
+/* Creates the language server manager and connects it to the file tree and
+ * the tabs. Called from init, after the template is set up. */
+void _palang_window_init_lsp           (PalangWindow *self);
+
+/* Lets go of the manager (its servers are asked to exit). Called from
+ * dispose, before the template is disposed. */
+void _palang_window_dispose_lsp        (PalangWindow *self);
 
 G_END_DECLS

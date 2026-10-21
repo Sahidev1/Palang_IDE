@@ -108,6 +108,7 @@ static const struct {
   { "win.toggle-sidebar",  "Toggle Sidebar",       "F9" },
   { "win.toggle-panel",    "Toggle Panel",         "<Control>j" },
   { "win.search-project",  "Search in Folder…",    "<Control><Shift>f" },
+  { "win.restart-language-servers", "Restart Language Servers", NULL },
   { "app.preferences",     "Preferences",          "<Control>comma" },
   { "app.quit",            "Quit",                 "<Control>q" },
 };

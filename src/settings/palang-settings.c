@@ -65,6 +65,18 @@ static const Option options[] = {
   { "wrap-lines", "editor", OPTION_BOOLEAN,
     "Wrap long lines at the edge of the editor instead of scrolling sideways.",
     .default_boolean = FALSE },
+  /* Language servers (lsp/). The value is a command line, split like a
+   * shell would ("typescript-language-server --stdio"). The names end in
+   * "-server" after the keys of the server table in palang-lsp-languages.c. */
+  { "c-server", "lsp", OPTION_STRING,
+    "Command that starts the language server for C and C++. Empty: none.",
+    .default_string = "clangd" },
+  { "python-server", "lsp", OPTION_STRING,
+    "Command that starts the language server for Python. Empty: none.",
+    .default_string = "pylsp" },
+  { "javascript-server", "lsp", OPTION_STRING,
+    "Command that starts the language server for JavaScript and TypeScript. Empty: none.",
+    .default_string = "typescript-language-server --stdio" },
 };
 
 enum {
@@ -76,6 +88,9 @@ enum {
   PROP_SHOW_LINE_NUMBERS,
   PROP_HIGHLIGHT_CURRENT_LINE,
   PROP_WRAP_LINES,
+  PROP_C_SERVER,
+  PROP_PYTHON_SERVER,
+  PROP_JAVASCRIPT_SERVER,
   N_PROPS
 };
 

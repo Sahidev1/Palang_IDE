@@ -31,6 +31,7 @@ adw_dep       = dependency('libadwaita-1', version: '>= 1.5')
 gtksource_dep = dependency('gtksourceview-5', version: '>= 5.12')
 vte_dep       = dependency('vte-2.91-gtk4', version: '>= 0.76')
 json_dep      = dependency('json-glib-1.0', version: '>= 1.8')
+jsonrpc_dep   = dependency('jsonrpc-glib-1.0', version: '>= 3.44')
 
 # config.h: values the C code needs from the build system.
 conf = configuration_data()

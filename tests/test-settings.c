@@ -265,7 +265,7 @@ test_describes_every_setting (void)
   g_auto (GStrv) choices = palang_settings_dup_choices ("color-scheme");
   g_autofree char *allowed = palang_settings_dup_allowed_values ("tab-width");
 
-  g_assert_cmpuint (g_strv_length (names), ==, 7);
+  g_assert_cmpuint (g_strv_length (names), ==, 10);  /* 7 + 3 language servers */
   for (guint i = 0; names[i] != NULL; i++)
     {
       g_autofree char *phrase = palang_settings_dup_allowed_values (names[i]);

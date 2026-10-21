@@ -158,10 +158,12 @@ and completion.
   - Python: **`pylsp` (decided)**, from apt: `sudo apt install
     python3-pylsp` (sahi runs it).
   - JavaScript: `typescript-language-server --stdio`. Not in apt; from
-    npm: `npm install -g typescript-language-server typescript`. sahi's
+    npm: `npm install -g typescript-language-server typescript@5`. sahi's
     Node is from nvm, which is on `PATH` only in shells, so Palang started
     from the desktop menu may not find it: a missing server must give a
     clear message (which command, how to install), never a silent failure.
+    **TypeScript 7 doesn't work** (found in 2b.1): it has no `tsserver`,
+    which typescript-language-server 6 needs, hence `typescript@5`.
   - Other servers can be configured in `[lsp]`, but only these three are
     tested.
 - **"Problems" page in the bottom panel: later (decided)**, not in 2b

@@ -17,6 +17,11 @@
  *   highlight-current-line=true
  *   wrap-lines=false
  *
+ *   [lsp]                      # language servers; empty: none
+ *   c-server=clangd
+ *   python-server=pylsp
+ *   javascript-server=typescript-language-server --stdio
+ *
  * Unknown groups and keys are kept when the file is rewritten, and invalid
  * values fall back to the defaults.
  */

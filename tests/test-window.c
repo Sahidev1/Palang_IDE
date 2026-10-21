@@ -14,6 +14,7 @@
 #include <glib/gstdio.h>
 
 #include "palang-palette.h"
+#include "palang-settings.h"
 #include "palang-window.h"
 
 /* ---- Helpers ------------------------------------------------------------ */
@@ -870,6 +871,16 @@ main (int   argc,
   /* Without animations, dialogs open and close instantly, which keeps the
    * tests fast and less timing-dependent. */
   g_object_set (gtk_settings_get_default (), "gtk-enable-animations", FALSE, NULL);
+
+  /* The tests open files like a.c; without this they would start the real
+   * clangd (if installed). Language servers are tested in test-lsp.c with
+   * a fake server. (The settings live in build/test-home, not the user's.) */
+  g_assert_true (palang_settings_set_from_string (palang_settings_get_default (),
+                                                  "c-server", "", NULL));
+  g_assert_true (palang_settings_set_from_string (palang_settings_get_default (),
+                                                  "python-server", "", NULL));
+  g_assert_true (palang_settings_set_from_string (palang_settings_get_default (),
+                                                  "javascript-server", "", NULL));
 
 #define ADD_TEST(path, func) \
   g_test_add (path, Fixture, NULL, fixture_setup, func, fixture_teardown)

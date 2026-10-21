@@ -8,8 +8,9 @@
  *
  * The window's code is split over several files: the bottom panel is in
  * palang-window-panel.c, the command palette and Quick Open in
- * palang-window-palette.c. palang-window-private.h has the struct they
- * share and explains the split.
+ * palang-window-palette.c, the language servers in palang-window-lsp.c.
+ * palang-window-private.h has the struct they share and explains the
+ * split.
  *
  * Sections of this file:
  *   - Tabs: adding, finding, and keeping the window title in sync
@@ -1081,6 +1082,7 @@ palang_window_dispose (GObject *object)
   g_clear_object (&self->title_binding);
   g_clear_object (&self->subtitle_binding);
   g_clear_object (&self->window_title_binding);
+  _palang_window_dispose_lsp (self);
 
   gtk_widget_dispose_template (GTK_WIDGET (self), PALANG_TYPE_WINDOW);
 
@@ -1144,6 +1146,7 @@ palang_window_class_init (PalangWindowClass *klass)
   gtk_widget_class_install_action (widget_class, "win.go-to-line", NULL, go_to_line_action);
   _palang_window_class_init_panel (widget_class);
   _palang_window_class_init_palette (widget_class);
+  _palang_window_class_init_lsp (widget_class);
 }
 
 static void
@@ -1163,6 +1166,7 @@ palang_window_init (PalangWindow *self)
                     G_CALLBACK (on_close_page), self);
 
   _palang_window_init_panel (self);
+  _palang_window_init_lsp (self);
 
   /* Start in the "no tabs" state. */
   on_n_pages_changed (self->tab_view, NULL, self);

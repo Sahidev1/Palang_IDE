@@ -83,3 +83,21 @@ foreach name, source : ui_tests
     test(name, test_exe, env: test_env)
   endif
 endforeach
+
+# The language server tests talk to a fake server (fake-lsp-server.c); the
+# test program learns its path at compile time.
+fake_lsp_server = executable('fake-lsp-server',
+  'fake-lsp-server.c',
+  # gio-unix: GUnixInputStream, to read stdin as a GInputStream.
+  dependencies: palang_deps + [dependency('gio-unix-2.0')],
+  include_directories: [config_inc],
+)
+
+test_lsp = executable('test-lsp',
+  'test-lsp.c',
+  link_with: libpalang,
+  dependencies: palang_deps,
+  include_directories: [config_inc, palang_inc],
+  c_args: ['-DFAKE_LSP_SERVER="@0@"'.format(fake_lsp_server.full_path())],
+)
+test('lsp', test_lsp, env: test_env, depends: fake_lsp_server)
