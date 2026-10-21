@@ -8,6 +8,13 @@
  *   open     — like activate, but with files or a folder to open
  *              ("palang main.c", "palang ~/projects/foo").
  *   shutdown — runs once before exit.
+ *
+ * Every launch goes through command_line first, which picks activate or
+ * open, or runs a `palang` subcommand ("palang set tab-width 2", typed in
+ * the Palang terminal). A second `palang` process doesn't run any of this
+ * itself: GApplication sends its arguments to the Palang already running
+ * (over D-Bus), which handles them and sends back the output and exit
+ * status.
  */
 
 #include "config.h"
@@ -17,6 +24,7 @@
 #include "palang-appearance.h"
 #include "palang-application.h"
 #include "palang-command.h"
+#include "palang-command-line.h"
 #include "palang-preferences-dialog.h"
 #include "palang-settings.h"
 #include "palang-window.h"
@@ -197,6 +205,59 @@ palang_application_dispose (GObject *object)
   G_OBJECT_CLASS (palang_application_parent_class)->dispose (object);
 }
 
+/* Runs in the running Palang for every launch: its own, and each `palang`
+ * typed later anywhere (@command_line describes that call: arguments,
+ * environment, folder, and where to print).
+ *
+ * Subcommands ("palang set …") count only when the caller runs in the
+ * Palang terminal, recognized by PALANG_TERMINAL=1 in *its* environment.
+ * Elsewhere `palang settings` opens a file called "settings", as before, so
+ * the names can't clash with other uses. (This avoids clashes; it is not a
+ * security boundary: anyone can set the variable.)
+ *
+ * Returns: the exit status of the caller's `palang` process. */
+static int
+palang_application_command_line (GApplication            *app,
+                                 GApplicationCommandLine *command_line)
+{
+  int argc;
+  g_auto (GStrv) argv = g_application_command_line_get_arguments (command_line, &argc);
+  const char *in_terminal = g_application_command_line_getenv (command_line, "PALANG_TERMINAL");
+  g_autoptr (GPtrArray) files = NULL;
+
+  if (argc > 1 && g_strcmp0 (in_terminal, "1") == 0 &&
+      palang_command_line_is_subcommand (argv[1]))
+    {
+      g_autoptr (GString) output = g_string_new (NULL);
+      g_autoptr (GString) errors = g_string_new (NULL);
+      int status = palang_command_line_run (palang_settings_get_default (),
+                                            (const char * const *) argv + 1,
+                                            output, errors);
+
+      /* _literal: print the text as is (no printf-style % handling). */
+      if (output->len > 0)
+        g_application_command_line_print_literal (command_line, output->str);
+      if (errors->len > 0)
+        g_application_command_line_printerr_literal (command_line, errors->str);
+      return status;
+    }
+
+  if (argc <= 1)
+    {
+      g_application_activate (app);
+      return 0;
+    }
+
+  /* File names are relative to the caller's current folder, not ours;
+   * create_file_for_arg () takes care of that. */
+  files = g_ptr_array_new_with_free_func (g_object_unref);
+  for (int i = 1; i < argc; i++)
+    g_ptr_array_add (files, g_application_command_line_create_file_for_arg (command_line, argv[i]));
+
+  g_application_open (app, (GFile **) files->pdata, files->len, "");
+  return 0;
+}
+
 static void
 palang_application_class_init (PalangApplicationClass *klass)
 {
@@ -209,6 +270,7 @@ palang_application_class_init (PalangApplicationClass *klass)
   app_class->startup = palang_application_startup;
   app_class->activate = palang_application_activate;
   app_class->open = palang_application_open;
+  app_class->command_line = palang_application_command_line;
 }
 
 static void
@@ -235,8 +297,14 @@ palang_application_new (void)
    * the first one). */
   return g_object_new (PALANG_TYPE_APPLICATION,
                        "application-id", APPLICATION_ID,
-                       /* HANDLES_OPEN: accept files on the command line. */
-                       "flags", G_APPLICATION_HANDLES_OPEN,
+                       /* HANDLES_COMMAND_LINE: the running Palang gets every
+                        * launch's arguments (palang_application_command_line).
+                        * SEND_ENVIRONMENT: and its environment variables
+                        * (for PALANG_TERMINAL).
+                        * HANDLES_OPEN: we can open files (g_application_open). */
+                       "flags", G_APPLICATION_HANDLES_COMMAND_LINE |
+                                G_APPLICATION_SEND_ENVIRONMENT |
+                                G_APPLICATION_HANDLES_OPEN,
                        "resource-base-path", RESOURCE_PATH,
                        NULL);
 }

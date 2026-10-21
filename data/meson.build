@@ -13,6 +13,12 @@ install_data('icons/io.github.sahidev1.Palang.svg',
   install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps',
 )
 
+# Tab completion for `palang set …` in the Palang terminal.
+install_data('palang.bash-completion',
+  install_dir: get_option('datadir') / 'bash-completion' / 'completions',
+  rename: 'palang',
+)
+
 desktop_file_validate = find_program('desktop-file-validate', required: false)
 if desktop_file_validate.found()
   test('desktop-file', desktop_file_validate,

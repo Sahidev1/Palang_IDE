@@ -6,6 +6,7 @@ palang_inc  = include_directories('app', 'editor', 'palette', 'settings', 'termi
 # against the same code the app uses.
 libpalang = static_library('palang',
   'app/palang-application.c',
+  'app/palang-command-line.c',
   'app/palang-panel.c',
   'app/palang-preferences-dialog.c',
   'app/palang-save-flow.c',

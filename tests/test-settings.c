@@ -188,6 +188,99 @@ test_notifies_only_on_change (Fixture *fixture, gconstpointer data)
 
 /* ---- Appearance --------------------------------------------------------- */
 
+/* ---- Settings by name, as text ----------------------------------------- */
+
+static void
+test_by_name (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = palang_settings_new_for_path (fixture->path);
+  g_autoptr (PalangSettings) reloaded = NULL;
+  g_autoptr (GError) error = NULL;
+  g_autofree char *value = NULL;
+  guint notifications = 0;
+
+  g_signal_connect (settings, "notify::tab-width", G_CALLBACK (count_notify), &notifications);
+
+  /* Goes through the property: notified and saved. */
+  g_assert_true (palang_settings_set_from_string (settings, "tab-width", "2", &error));
+  g_assert_no_error (error);
+  g_assert_cmpuint (palang_settings_get_tab_width (settings), ==, 2);
+  g_assert_cmpuint (notifications, ==, 1);
+  reloaded = palang_settings_new_for_path (fixture->path);
+  g_assert_cmpuint (palang_settings_get_tab_width (reloaded), ==, 2);
+
+  g_assert_true (palang_settings_set_from_string (settings, "wrap-lines", "true", NULL));
+  value = palang_settings_dup_value (settings, "wrap-lines");
+  g_assert_cmpstr (value, ==, "true");
+  g_clear_pointer (&value, g_free);
+
+  g_assert_true (palang_settings_set_from_string (settings, "font", "Monospace 12", NULL));
+  value = palang_settings_dup_value (settings, "font");
+  g_assert_cmpstr (value, ==, "Monospace 12");
+  g_clear_pointer (&value, g_free);
+
+  g_assert_true (palang_settings_reset (settings, "tab-width", NULL));
+  g_assert_cmpuint (palang_settings_get_tab_width (settings), ==, 4);
+}
+
+static void
+test_by_name_rejects (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = palang_settings_new_for_path (fixture->path);
+  const char *bad[][2] = {
+    { "tab-width", "0" },        /* below the minimum */
+    { "tab-width", "17" },       /* above the maximum */
+    { "tab-width", "2x" },       /* not a number */
+    { "tab-width", "-1" },
+    { "wrap-lines", "yes" },     /* booleans are true/false */
+    { "color-scheme", "purple" },
+  };
+
+  for (guint i = 0; i < G_N_ELEMENTS (bad); i++)
+    {
+      g_autoptr (GError) error = NULL;
+
+      g_assert_false (palang_settings_set_from_string (settings, bad[i][0], bad[i][1], &error));
+      g_assert_error (error, PALANG_SETTINGS_ERROR, PALANG_SETTINGS_ERROR_INVALID_VALUE);
+    }
+
+  {
+    g_autoptr (GError) error = NULL;
+
+    g_assert_false (palang_settings_set_from_string (settings, "nope", "1", &error));
+    g_assert_error (error, PALANG_SETTINGS_ERROR, PALANG_SETTINGS_ERROR_UNKNOWN_NAME);
+    g_assert_null (palang_settings_dup_value (settings, "nope"));
+  }
+
+  /* Nothing changed. */
+  g_assert_cmpuint (palang_settings_get_tab_width (settings), ==, 4);
+  g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "dark");
+}
+
+/* Every setting has a description and an allowed-values phrase. */
+static void
+test_describes_every_setting (void)
+{
+  g_auto (GStrv) names = palang_settings_dup_names ();
+  g_auto (GStrv) choices = palang_settings_dup_choices ("color-scheme");
+  g_autofree char *allowed = palang_settings_dup_allowed_values ("tab-width");
+
+  g_assert_cmpuint (g_strv_length (names), ==, 7);
+  for (guint i = 0; names[i] != NULL; i++)
+    {
+      g_autofree char *phrase = palang_settings_dup_allowed_values (names[i]);
+      g_autofree char *default_value = palang_settings_dup_default_value (names[i]);
+
+      g_assert_nonnull (palang_settings_get_description (names[i]));
+      g_assert_nonnull (phrase);
+      g_assert_nonnull (default_value);
+    }
+
+  g_assert_cmpstrv (choices, ((const char *[]) { "system", "light", "dark", NULL }));
+  g_assert_cmpstr (allowed, ==, "a whole number from 1 to 16");
+  g_assert_null (palang_settings_dup_choices ("font"));
+}
+
 static void
 test_choose_color_scheme (void)
 {
@@ -251,6 +344,9 @@ main (int   argc,
   ADD_TEST ("/settings/invalid-values-use-defaults", test_invalid_values_use_defaults);
   ADD_TEST ("/settings/rejects-invalid-color-scheme", test_rejects_invalid_color_scheme);
   ADD_TEST ("/settings/notifies-only-on-change", test_notifies_only_on_change);
+  ADD_TEST ("/settings/by-name", test_by_name);
+  ADD_TEST ("/settings/by-name-rejects", test_by_name_rejects);
+  g_test_add_func ("/settings/describes-every-setting", test_describes_every_setting);
   g_test_add_func ("/appearance/choose-color-scheme", test_choose_color_scheme);
   g_test_add_func ("/appearance/font-to-css", test_font_to_css);
 
