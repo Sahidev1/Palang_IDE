@@ -143,16 +143,55 @@ terminal `palang set …` is treated as file names; search finds text across the
 and opens results at the right line; the palette runs any action; Quick
 Open opens files.
 
-## 2b. LSP client
+## 2b/2c. LSP client
 
-Module `lsp/`.
+Module `lsp/`. Split into two sessions **(decided 2026-10-21)**: **2b**
+client core, document sync, diagnostics, go to definition; **2c** hover
+and completion.
+
+### Decisions (sahi, 2026-10-21)
+
+- **Split into 2b and 2c (decided)**, as proposed in the notes below.
+- **Languages: C, Python, JavaScript (decided).** Rust is not wanted; no
+  rust-analyzer default. (C++ comes free with clangd.)
+  - C: `clangd` (installed, 18.1.3).
+  - Python: **`pylsp` (decided)**, from apt: `sudo apt install
+    python3-pylsp` (sahi runs it).
+  - JavaScript: `typescript-language-server --stdio`. Not in apt; from
+    npm: `npm install -g typescript-language-server typescript`. sahi's
+    Node is from nvm, which is on `PATH` only in shells, so Palang started
+    from the desktop menu may not find it: a missing server must give a
+    clear message (which command, how to install), never a silent failure.
+  - Other servers can be configured in `[lsp]`, but only these three are
+    tested.
+- **"Problems" page in the bottom panel: later (decided)**, not in 2b
+  (candidate for 2c). 2b shows diagnostics in the editor only.
+
+### 2b steps (one commit each)
+
+| Step | What |
+|---|---|
+| 2b.0 | Split `palang-window.c`: panel pages, terminal key routing, palette actions into their own file(s). No behaviour change, tests green |
+| 2b.1 | Client core: start a server per language + project folder (`GSubprocess` + jsonrpc-glib), `initialize`/`shutdown`, restart after a crash, "server not found" message, `[lsp]` settings; fake language server for tests |
+| 2b.2 | Document sync: didOpen/didChange/didSave/didClose, document versions, UTF-16 ↔ character position helpers (unit-tested) |
+| 2b.3 | Diagnostics: underlines, gutter icons, message on hover |
+| 2b.4 | Go to definition: F12 / Ctrl+click → `palang_window_open_file_at ()` |
+| 2b.5 | End of phase: PROGRESS, manual tests, `docs/03-*.md`, `interfaces.md` |
+
+### 2c (next session)
+
+Hover popups, completion (`GtkSourceCompletionProvider`, trigger
+characters, snippets), and probably the Problems page.
+
+### Design
 
 - `jsonrpc-glib` (installed: 3.44) over the server's stdio via
   `GSubprocess`. GNOME Builder's LSP code is the reference.
 - Diagnostics, hover, go-to-definition, popup completions through a
   `GtkSourceCompletionProvider`.
-- Servers configured per language (`clangd`, `pyright`, `rust-analyzer`,
-  …), in a `[lsp]` group of `config.ini`.
+- Servers configured per language (defaults: `clangd`, `pylsp`,
+  `typescript-language-server --stdio`), in a `[lsp]` group of
+  `config.ini`.
 - Works on documents and views through `editor/`'s public interface; the
   window wires it to editors (ARCHITECTURE.md rule 2).
 - Language-server types later feed the math type system
@@ -162,11 +201,14 @@ Module `lsp/`.
 `build/compile_commands.json`, which clangd finds by itself, so Palang's
 own sources work as the first test project.
 
-**Verification:** `clangd`/`pyright` diagnostics and go-to-definition work.
+**Verification (2b):** diagnostics and go to definition work with
+`clangd` (Palang's own code), `pylsp` and `typescript-language-server`;
+a missing server says so clearly.
 
-### Notes from the size discussion (2026-10-21) — proposals, not decided
+### Notes from the size discussion (2026-10-21)
 
-Discussed with sahi after 2a; **confirm these with sahi before coding**.
+Discussed with sahi after 2a. The split was then accepted and the open
+questions answered (see "Decisions" above).
 
 - **Size:** about as much code as 2a (~4,000–5,000 lines with tests) but
   1.5–2× the effort: one deep asynchronous feature instead of five small

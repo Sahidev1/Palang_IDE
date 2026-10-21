@@ -115,7 +115,8 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 0 Setup | ✅ |
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
 | 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests passed (dialog stacking fixed afterwards) |
-| 2b LSP client | **next**: `docs/plan/phase-2.md` §2b, including the proposed 2b/2c split and open questions; clangd is installed |
+| 2b LSP client (core, sync, diagnostics, go to definition) | **in progress**: step table and decisions in `docs/plan/phase-2.md` §2b/2c |
+| 2c LSP hover + completion | planned, next session after 2b |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
 Open items: `palang-window.c` is ~1600 lines, split it before adding LSP
@@ -186,19 +187,18 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Phase 2b, the LSP client. Read `docs/plan/phase-2.md` §2b, especially
-"Notes from the size discussion": a proposed split (2b: window split,
-client core, document sync, diagnostics, go to definition; 2c: hover and
-completion) and three open questions (pylsp vs pyright, a Problems panel
-page, the split itself). **Discuss those with sahi and get decisions
-before coding**, then write the step table into the plan as was done for
-2a, and record the decisions there.
+Phase 2b, the LSP client. Decided with sahi on 2026-10-21 (recorded in
+`docs/plan/phase-2.md` §2b/2c): split into 2b and 2c; languages **C
+(clangd), Python (pylsp), JavaScript (typescript-language-server)**, no
+Rust; the Problems panel page comes later. Follow the 2b step table there,
+starting with 2b.0 (splitting `palang-window.c`).
 
-- Step 0 is splitting `palang-window.c` (~1650 lines): move the panel
-  pages, the terminal key routing and the palette actions into their own
-  file(s), no behaviour change, tests still green.
 - `clangd` is installed; meson's `build/compile_commands.json` makes
-  Palang's own code the first test project. `pylsp` is not installed (if
-  chosen: `sudo apt install python3-pylsp`, sahi runs it).
+  Palang's own code the first test project.
+- `pylsp` is not installed yet: `sudo apt install python3-pylsp` (sahi
+  runs it).
+- `typescript-language-server` comes from npm (`npm install -g
+  typescript-language-server typescript`); sahi's Node is from nvm, so it
+  may not be on `PATH` when Palang is started from the desktop menu.
 - `jsonrpc-glib` 3.44 is installed; GNOME Builder's LSP client is the
   reference.
