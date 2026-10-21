@@ -41,6 +41,9 @@ test_round_trip (Fixture *fixture, gconstpointer data)
     g_ptr_array_add (saved->files, g_file_new_for_path (paths[i]));
   saved->active = 1;
   saved->show_sidebar = TRUE;
+  saved->show_panel = TRUE;
+  saved->panel_height = 312;
+  saved->panel_page = g_strdup ("search");
 
   g_assert_true (palang_session_save (saved, fixture->path, &error));
   g_assert_no_error (error);
@@ -56,6 +59,9 @@ test_round_trip (Fixture *fixture, gconstpointer data)
     }
   g_assert_cmpint (loaded->active, ==, 1);
   g_assert_true (loaded->show_sidebar);
+  g_assert_true (loaded->show_panel);
+  g_assert_cmpint (loaded->panel_height, ==, 312);
+  g_assert_cmpstr (loaded->panel_page, ==, "search");
 }
 
 static void
@@ -71,6 +77,9 @@ test_empty_session (Fixture *fixture, gconstpointer data)
   g_assert_null (loaded->folder);
   g_assert_cmpuint (loaded->files->len, ==, 0);
   g_assert_cmpint (loaded->active, ==, -1);
+  g_assert_false (loaded->show_panel);
+  g_assert_cmpint (loaded->panel_height, ==, 0);
+  g_assert_null (loaded->panel_page);
 }
 
 static void

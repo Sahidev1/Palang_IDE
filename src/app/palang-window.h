@@ -1,4 +1,8 @@
-/* palang-window.h — the main window: tabs of open documents. */
+/* palang-window.h — the main window: tabs of open documents, the folder
+ * sidebar and the bottom panel.
+ *
+ * Property "active-editor" (PalangEditor, read-only, nullable): the editor
+ * in the selected tab. Listen to "notify::active-editor" to follow it. */
 
 #pragma once
 
@@ -6,6 +10,7 @@
 
 #include "palang-application.h"
 #include "palang-editor.h"
+#include "palang-panel.h"
 #include "palang-session.h"
 
 G_BEGIN_DECLS
@@ -36,6 +41,9 @@ void          palang_window_new_document      (PalangWindow *self);
 PalangEditor *palang_window_get_active_editor (PalangWindow *self);
 
 guint         palang_window_get_n_editors     (PalangWindow *self);
+
+/* Returns: (transfer none): the bottom panel under the tabs. */
+PalangPanel  *palang_window_get_panel         (PalangWindow *self);
 
 /* Returns: (transfer full): what's open now, for saving (see
  * palang-session.h). Never-saved documents are left out. */

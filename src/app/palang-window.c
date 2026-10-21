@@ -3,12 +3,16 @@
  * Layout is in data/ui/palang-window.ui. Each tab (an AdwTabPage in the
  * AdwTabView) holds one PalangEditor, which holds one PalangDocument.
  *
+ * Under the tabs is the bottom panel (PalangPanel, palang-panel.c) in a
+ * vertical GtkPaned; Ctrl+J shows and hides it.
+ *
  * Sections of this file:
  *   - Tabs: adding, finding, and keeping the window title in sync
  *   - Opening files and folders
  *   - Saving (Save, Save As, Save All)
  *   - Closing a tab with unsaved changes
  *   - Closing the window with unsaved changes
+ *   - Bottom panel
  *   - Session: remembering what was open
  *   - Actions (what menu items and shortcuts call)
  */
@@ -16,6 +20,7 @@
 #include "config.h"
 
 #include "palang-file-tree.h"
+#include "palang-panel.h"
 #include "palang-save-flow.h"
 #include "palang-window.h"
 
@@ -32,6 +37,12 @@ struct _PalangWindow
   AdwToastOverlay *toast_overlay;
   GtkStack        *stack;
   AdwTabView      *tab_view;
+  GtkPaned        *paned;
+  PalangPanel     *panel;
+
+  /* The panel's height while it's hidden, measured like GtkPaned does:
+   * from the divider to the bottom (see panel_height_on_screen). */
+  int panel_height;
 
   /* Bindings that show the selected editor's title/path in the header bar.
    * We hold a reference so we can safely unbind them when the selection
@@ -42,6 +53,17 @@ struct _PalangWindow
 };
 
 G_DEFINE_FINAL_TYPE (PalangWindow, palang_window, ADW_TYPE_APPLICATION_WINDOW)
+
+/* Height of the bottom panel when nothing was saved. */
+#define DEFAULT_PANEL_HEIGHT 250
+
+enum {
+  PROP_0,
+  PROP_ACTIVE_EDITOR,
+  N_PROPS
+};
+
+static GParamSpec *properties[N_PROPS];
 
 static void
 show_toast (PalangWindow *self,
@@ -97,13 +119,17 @@ clear_binding (GBinding **binding)
   g_clear_object (binding);
 }
 
-/* Header bar and taskbar show the selected editor's title (and path). */
+/* Another tab was selected (or the last one closed). The header bar and
+ * taskbar show the selected editor's title (and path), and whoever watches
+ * "active-editor" is told. */
 static void
 on_selected_page_changed (AdwTabView   *tab_view,
                           GParamSpec   *pspec,
                           PalangWindow *self)
 {
   AdwTabPage *page = adw_tab_view_get_selected_page (tab_view);
+
+  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_ACTIVE_EDITOR]);
 
   clear_binding (&self->title_binding);
   clear_binding (&self->subtitle_binding);
@@ -717,6 +743,88 @@ palang_window_close_request (GtkWindow *window)
   return TRUE;
 }
 
+/* ---- Bottom panel ------------------------------------------------------- */
+
+/* The panel's height as GtkPaned sees it: from the divider to the bottom,
+ * i.e. the paned's height minus the divider's position (which GtkPaned
+ * counts from the top). Measured this way, putting the divider back at
+ * "paned height − panel height" gives exactly the same layout again. */
+static int
+panel_height_on_screen (PalangWindow *self)
+{
+  int paned_height = gtk_widget_get_height (GTK_WIDGET (self->paned));
+
+  if (!gtk_widget_get_visible (GTK_WIDGET (self->panel)) || paned_height <= 0)
+    return self->panel_height;
+
+  return paned_height - gtk_paned_get_position (self->paned);
+}
+
+/* Gives the panel self->panel_height by moving the divider. This needs the
+ * paned's own height, which only exists once the window has been laid out
+ * (not yet when a session is restored at startup).
+ *
+ * A "tick callback" runs before every frame GTK draws for a widget; it
+ * keeps running until it returns G_SOURCE_REMOVE. We use it to wait for
+ * the first frame in which the paned has a height. */
+static gboolean
+restore_panel_height (GtkWidget     *paned,
+                      GdkFrameClock *frame_clock,
+                      gpointer       user_data)
+{
+  PalangWindow *self = PALANG_WINDOW (user_data);
+  int paned_height = gtk_widget_get_height (paned);
+
+  if (paned_height <= 0)
+    return G_SOURCE_CONTINUE;
+
+  gtk_paned_set_position (self->paned, MAX (0, paned_height - self->panel_height));
+  return G_SOURCE_REMOVE;
+}
+
+/* The panel was shown or hidden (Ctrl+J, its close button, the header bar
+ * button, a restored session).
+ *
+ * Shown: it gets back the height it had (or the default). While it was
+ * hidden the tabs had all the room, and window resizes in the meantime
+ * moved the divider, so we put the divider back ourselves. Without that, a
+ * panel shown at startup would also get just its minimum height (the
+ * switcher row).
+ *
+ * Hidden: remember its height. And if it had the keyboard focus, GTK would
+ * leave the focus nowhere; give it back to the text instead. */
+static void
+on_panel_visible_changed (PalangPanel  *panel,
+                          GParamSpec   *pspec,
+                          PalangWindow *self)
+{
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+  PalangEditor *editor = palang_window_get_active_editor (self);
+
+  if (gtk_widget_get_visible (GTK_WIDGET (panel)))
+    {
+      gtk_widget_add_tick_callback (GTK_WIDGET (self->paned), restore_panel_height, self, NULL);
+      return;
+    }
+
+  /* The divider hasn't moved yet, so this is still the height it had. */
+  if (gtk_widget_get_height (GTK_WIDGET (self->paned)) > 0)
+    self->panel_height = gtk_widget_get_height (GTK_WIDGET (self->paned)) -
+                         gtk_paned_get_position (self->paned);
+
+  if (editor != NULL &&
+      (focus == NULL || gtk_widget_is_ancestor (focus, GTK_WIDGET (panel))))
+    gtk_widget_grab_focus (GTK_WIDGET (editor));
+}
+
+PalangPanel *
+palang_window_get_panel (PalangWindow *self)
+{
+  g_return_val_if_fail (PALANG_IS_WINDOW (self), NULL);
+
+  return self->panel;
+}
+
 /* ---- Session: remembering what was open --------------------------------- */
 
 PalangSession *
@@ -731,6 +839,9 @@ palang_window_dup_session (PalangWindow *self)
   if (palang_window_get_folder (self) != NULL)
     session->folder = g_object_ref (palang_window_get_folder (self));
   session->show_sidebar = adw_overlay_split_view_get_show_sidebar (self->split_view);
+  session->show_panel = gtk_widget_get_visible (GTK_WIDGET (self->panel));
+  session->panel_height = panel_height_on_screen (self);
+  session->panel_page = g_strdup (palang_panel_get_visible_page (self->panel));
 
   selected = adw_tab_view_get_selected_page (self->tab_view);
   n_pages = adw_tab_view_get_n_pages (self->tab_view);
@@ -838,6 +949,13 @@ palang_window_restore_session (PalangWindow        *self,
                                            session->show_sidebar &&
                                            palang_window_get_folder (self) != NULL);
 
+  /* Showing the panel applies the height (on_panel_visible_changed). */
+  if (session->panel_height > 0)
+    self->panel_height = session->panel_height;
+  if (session->panel_page != NULL)
+    palang_panel_set_visible_page (self->panel, session->panel_page);
+  gtk_widget_set_visible (GTK_WIDGET (self->panel), session->show_panel);
+
   data = g_new0 (RestoreData, 1);
   data->window = g_object_ref (self);
   data->files = g_ptr_array_ref (session->files);
@@ -911,6 +1029,21 @@ toggle_sidebar_action (GtkWidget  *widget,
 
   adw_overlay_split_view_set_show_sidebar (self->split_view,
                                            !adw_overlay_split_view_get_show_sidebar (self->split_view));
+}
+
+/* Ctrl+J. Showing the panel also moves the keyboard focus into it, so
+ * Ctrl+J is enough to get to the terminal and back. */
+static void
+toggle_panel_action (GtkWidget  *widget,
+                     const char *action_name,
+                     GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  gboolean show = !gtk_widget_get_visible (GTK_WIDGET (self->panel));
+
+  gtk_widget_set_visible (GTK_WIDGET (self->panel), show);
+  if (show)
+    palang_panel_focus_page (self->panel);
 }
 
 /* Find / Replace / Go to line: forwarded to the editor in the current tab. */
@@ -992,6 +1125,25 @@ close_tab_action (GtkWidget  *widget,
 /* ---- GObject boilerplate ------------------------------------------------ */
 
 static void
+palang_window_get_property (GObject    *object,
+                            guint       prop_id,
+                            GValue     *value,
+                            GParamSpec *pspec)
+{
+  PalangWindow *self = PALANG_WINDOW (object);
+
+  switch (prop_id)
+    {
+    case PROP_ACTIVE_EDITOR:
+      g_value_set_object (value, palang_window_get_active_editor (self));
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+    }
+}
+
+static void
 palang_window_dispose (GObject *object)
 {
   PalangWindow *self = PALANG_WINDOW (object);
@@ -1012,11 +1164,22 @@ palang_window_class_init (PalangWindowClass *klass)
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
   GtkWindowClass *window_class = GTK_WINDOW_CLASS (klass);
 
+  object_class->get_property = palang_window_get_property;
   object_class->dispose = palang_window_dispose;
   window_class->close_request = palang_window_close_request;
 
-  /* The .ui file uses <object class="PalangFileTree">. */
+  /* "active-editor": the PalangEditor in the selected tab, or NULL. It is
+   * read-only; other parts of Palang listen to "notify::active-editor" to
+   * follow the user from tab to tab. */
+  properties[PROP_ACTIVE_EDITOR] =
+    g_param_spec_object ("active-editor", NULL, NULL,
+                         PALANG_TYPE_EDITOR,
+                         G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+  g_object_class_install_properties (object_class, N_PROPS, properties);
+
+  /* The .ui file uses <object class="PalangFileTree"> and "PalangPanel". */
   g_type_ensure (PALANG_TYPE_FILE_TREE);
+  g_type_ensure (PALANG_TYPE_PANEL);
 
   gtk_widget_class_set_template_from_resource (widget_class,
                                                RESOURCE_PATH "/ui/palang-window.ui");
@@ -1028,13 +1191,17 @@ palang_window_class_init (PalangWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, toast_overlay);
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, stack);
   gtk_widget_class_bind_template_child (widget_class, PalangWindow, tab_view);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, paned);
+  gtk_widget_class_bind_template_child (widget_class, PalangWindow, panel);
   gtk_widget_class_bind_template_callback (widget_class, on_file_activated);
 
-  /* Keyboard shortcuts for these are set in palang-application.c. */
+  /* Their names and keyboard shortcuts are in the command table in
+   * palang-application.c. */
   gtk_widget_class_install_action (widget_class, "win.new", NULL, new_action);
   gtk_widget_class_install_action (widget_class, "win.open", NULL, open_action);
   gtk_widget_class_install_action (widget_class, "win.open-folder", NULL, open_folder_action);
   gtk_widget_class_install_action (widget_class, "win.toggle-sidebar", NULL, toggle_sidebar_action);
+  gtk_widget_class_install_action (widget_class, "win.toggle-panel", NULL, toggle_panel_action);
   gtk_widget_class_install_action (widget_class, "win.save", NULL, save_action);
   gtk_widget_class_install_action (widget_class, "win.save-as", NULL, save_as_action);
   gtk_widget_class_install_action (widget_class, "win.save-all", NULL, save_all_action);
@@ -1051,6 +1218,8 @@ palang_window_class_init (PalangWindowClass *klass)
 static void
 palang_window_init (PalangWindow *self)
 {
+  self->panel_height = DEFAULT_PANEL_HEIGHT;
+
   gtk_widget_init_template (GTK_WIDGET (self));
 
   g_signal_connect (self->tab_view, "notify::selected-page",
@@ -1059,6 +1228,8 @@ palang_window_init (PalangWindow *self)
                     G_CALLBACK (on_n_pages_changed), self);
   g_signal_connect (self->tab_view, "close-page",
                     G_CALLBACK (on_close_page), self);
+  g_signal_connect (self->panel, "notify::visible",
+                    G_CALLBACK (on_panel_visible_changed), self);
 
   /* Start in the "no tabs" state. */
   on_n_pages_changed (self->tab_view, NULL, self);

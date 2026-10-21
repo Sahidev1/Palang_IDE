@@ -135,6 +135,13 @@
                     <property name="tooltip-text">Main Menu</property>
                   </object>
                 </child>
+                <child type="end">
+                  <object class="GtkToggleButton">
+                    <property name="icon-name">utilities-terminal-symbolic</property>
+                    <property name="tooltip-text">Show Panel: Terminal, Search (Ctrl+J)</property>
+                    <property name="active" bind-source="panel" bind-property="visible" bind-flags="sync-create|bidirectional"/>
+                  </object>
+                </child>
               </object>
             </child>
             <child type="top">
@@ -144,31 +151,47 @@
               </object>
             </child>
             <property name="content">
-              <!-- Shows error messages ("toasts") on top of the content. -->
-              <object class="AdwToastOverlay" id="toast_overlay">
-                <property name="child">
-                  <!-- "empty" when no tabs are open, "tabs" otherwise. -->
-                  <object class="GtkStack" id="stack">
-                    <child>
-                      <object class="GtkStackPage">
-                        <property name="name">empty</property>
-                        <property name="child">
-                          <object class="AdwStatusPage">
-                            <property name="icon-name">text-editor-symbolic</property>
-                            <property name="title">No Open Files</property>
-                            <property name="description">Press Ctrl+O to open a file, Ctrl+Shift+O to open a folder, or Ctrl+N to start a new file.</property>
+              <!-- Tabs on top, the bottom panel (terminal, search) below.
+                   The user drags the divider between them. When the window
+                   grows, the tabs get the extra space and the panel keeps
+                   its height (resize-end-child = false). -->
+              <object class="GtkPaned" id="paned">
+                <property name="orientation">vertical</property>
+                <property name="resize-end-child">false</property>
+                <property name="shrink-end-child">false</property>
+                <property name="start-child">
+                  <!-- Shows error messages ("toasts") on top of the content. -->
+                  <object class="AdwToastOverlay" id="toast_overlay">
+                    <property name="child">
+                      <!-- "empty" when no tabs are open, "tabs" otherwise. -->
+                      <object class="GtkStack" id="stack">
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">empty</property>
+                            <property name="child">
+                              <object class="AdwStatusPage">
+                                <property name="icon-name">text-editor-symbolic</property>
+                                <property name="title">No Open Files</property>
+                                <property name="description">Press Ctrl+O to open a file, Ctrl+Shift+O to open a folder, or Ctrl+N to start a new file.</property>
+                              </object>
+                            </property>
                           </object>
-                        </property>
+                        </child>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">tabs</property>
+                            <property name="child">
+                              <object class="AdwTabView" id="tab_view"/>
+                            </property>
+                          </object>
+                        </child>
                       </object>
-                    </child>
-                    <child>
-                      <object class="GtkStackPage">
-                        <property name="name">tabs</property>
-                        <property name="child">
-                          <object class="AdwTabView" id="tab_view"/>
-                        </property>
-                      </object>
-                    </child>
+                    </property>
+                  </object>
+                </property>
+                <property name="end-child">
+                  <object class="PalangPanel" id="panel">
+                    <property name="visible">false</property>
                   </object>
                 </property>
               </object>

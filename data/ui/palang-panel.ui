@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The bottom panel. Behaviour lives in src/app/palang-panel.c. -->
+<interface>
+  <template class="PalangPanel" parent="AdwBin">
+    <!-- No id: binding an AdwBin's direct child as a template child would
+         free it twice on dispose. -->
+    <property name="child">
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <!-- Top row: page switcher on the left, close button on the right. -->
+        <child>
+          <object class="GtkBox">
+            <style>
+              <class name="toolbar"/>
+            </style>
+            <child>
+              <object class="AdwViewSwitcher">
+                <property name="stack">stack</property>
+                <property name="policy">wide</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="icon-name">window-close-symbolic</property>
+                <property name="tooltip-text">Hide Panel (Ctrl+J)</property>
+                <property name="hexpand">true</property>
+                <property name="halign">end</property>
+                <signal name="clicked" handler="on_close_clicked"/>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwViewStack" id="stack">
+            <property name="vexpand">true</property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

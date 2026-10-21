@@ -2,7 +2,8 @@
  *
  * Saved when the window closes and restored when Palang starts without
  * arguments: the open folder, the open files (in tab order), which tab was
- * selected, and whether the sidebar was shown. Never-saved "Untitled"
+ * selected, whether the sidebar was shown, and the bottom panel (shown or
+ * not, its height and its page). Never-saved "Untitled"
  * documents are not part of it.
  *
  * Stored in ~/.local/state/palang/session.ini:
@@ -12,6 +13,9 @@
  *   files=file:///home/ali/projects/foo/main.c;file:///…/util.c;
  *   active=1
  *   show-sidebar=true
+ *   show-panel=true
+ *   panel-height=250
+ *   panel-page=terminal
  *
  * Locations are stored as URIs, so names with unusual characters survive.
  */
@@ -27,6 +31,9 @@ typedef struct {
   GPtrArray *files;         /* GFile, in tab order */
   int        active;        /* index into files, or -1 */
   gboolean   show_sidebar;
+  gboolean   show_panel;
+  int        panel_height;  /* pixels; 0 means "the default" */
+  char      *panel_page;    /* nullable: a page id, e.g. "terminal" */
 } PalangSession;
 
 PalangSession *palang_session_new          (void);

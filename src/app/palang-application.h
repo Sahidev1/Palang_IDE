@@ -1,7 +1,8 @@
 /* palang-application.h — the PalangApplication type.
  *
  * One PalangApplication exists per running Palang. It owns the app-wide
- * actions (like Quit) and creates windows.
+ * actions (like Quit), the command table (every command with its name and
+ * shortcut) and creates windows.
  */
 
 #pragma once
@@ -18,6 +19,10 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (PalangApplication, palang_application,
                       PALANG, APPLICATION, AdwApplication)
 
-PalangApplication *palang_application_new (void);
+PalangApplication *palang_application_new          (void);
+
+/* Returns: (transfer none): every command of the app, a list of
+ * PalangCommand (see palang-command.h), for the command palette. */
+GListModel        *palang_application_get_commands (PalangApplication *self);
 
 G_END_DECLS

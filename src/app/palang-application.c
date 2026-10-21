@@ -16,6 +16,7 @@
 
 #include "palang-appearance.h"
 #include "palang-application.h"
+#include "palang-command.h"
 #include "palang-preferences-dialog.h"
 #include "palang-settings.h"
 #include "palang-window.h"
@@ -23,6 +24,8 @@
 struct _PalangApplication
 {
   AdwApplication parent_instance;
+
+  GListStore *commands;  /* PalangCommand, built from commands[] */
 };
 
 /* Defines palang_application_get_type() and the parent class pointer
@@ -65,27 +68,32 @@ static const GActionEntry app_actions[] = {
   { .name = "preferences", .activate = palang_application_preferences_action },
 };
 
-/* Keyboard shortcuts: action name → accelerators. "win." actions are
- * defined in palang-window.c. */
+/* The command table: every command of the app, its name for people and its
+ * keyboard shortcut. It feeds both the shortcuts (in startup) and the
+ * command palette (palang_application_get_commands ()), so a new command
+ * added here shows up in both. "win." actions are defined in
+ * palang-window.c. accel is NULL for a command without a shortcut. */
 static const struct {
   const char *action;
-  const char *accels[2];
-} shortcuts[] = {
-  { "app.quit",      { "<Control>q", NULL } },
-  { "app.preferences", { "<Control>comma", NULL } },
-  { "win.new",       { "<Control>n", NULL } },
-  { "win.open",      { "<Control>o", NULL } },
-  { "win.open-folder", { "<Control><Shift>o", NULL } },
-  { "win.toggle-sidebar", { "F9", NULL } },
-  { "win.save",      { "<Control>s", NULL } },
-  { "win.save-as",   { "<Control><Shift>s", NULL } },
-  { "win.save-all",  { "<Control><Alt>s", NULL } },
-  { "win.close-tab", { "<Control>w", NULL } },
-  { "win.find",      { "<Control>f", NULL } },
-  { "win.replace",   { "<Control>h", NULL } },
-  { "win.find-next", { "F3", NULL } },
-  { "win.find-previous", { "<Shift>F3", NULL } },
-  { "win.go-to-line", { "<Control>g", NULL } },
+  const char *title;
+  const char *accel;
+} commands[] = {
+  { "win.new",            "New File",          "<Control>n" },
+  { "win.open",           "Open File…",        "<Control>o" },
+  { "win.open-folder",    "Open Folder…",      "<Control><Shift>o" },
+  { "win.save",           "Save",              "<Control>s" },
+  { "win.save-as",        "Save As…",          "<Control><Shift>s" },
+  { "win.save-all",       "Save All",          "<Control><Alt>s" },
+  { "win.close-tab",      "Close Tab",         "<Control>w" },
+  { "win.find",           "Find…",             "<Control>f" },
+  { "win.replace",        "Find and Replace…", "<Control>h" },
+  { "win.find-next",      "Find Next",         "F3" },
+  { "win.find-previous",  "Find Previous",     "<Shift>F3" },
+  { "win.go-to-line",     "Go to Line…",       "<Control>g" },
+  { "win.toggle-sidebar", "Toggle Sidebar",    "F9" },
+  { "win.toggle-panel",   "Toggle Panel",      "<Control>j" },
+  { "app.preferences",    "Preferences",       "<Control>comma" },
+  { "app.quit",           "Quit",              "<Control>q" },
 };
 
 /* Returns: (transfer none): the existing window, or a new one. */
@@ -116,9 +124,16 @@ palang_application_startup (GApplication *app)
   g_action_map_add_action_entries (G_ACTION_MAP (app),
                                    app_actions, G_N_ELEMENTS (app_actions),
                                    app);
-  for (guint i = 0; i < G_N_ELEMENTS (shortcuts); i++)
-    gtk_application_set_accels_for_action (GTK_APPLICATION (app),
-                                           shortcuts[i].action, shortcuts[i].accels);
+  for (guint i = 0; i < G_N_ELEMENTS (commands); i++)
+    {
+      /* An action can have several shortcuts, so GTK takes a
+       * NULL-terminated list; ours have one at most. */
+      const char *accels[] = { commands[i].accel, NULL };
+
+      if (commands[i].accel != NULL)
+        gtk_application_set_accels_for_action (GTK_APPLICATION (app),
+                                               commands[i].action, accels);
+    }
 }
 
 static void
@@ -164,10 +179,31 @@ palang_application_open (GApplication  *app,
   gtk_window_present (GTK_WINDOW (window));
 }
 
+GListModel *
+palang_application_get_commands (PalangApplication *self)
+{
+  g_return_val_if_fail (PALANG_IS_APPLICATION (self), NULL);
+
+  return G_LIST_MODEL (self->commands);
+}
+
+static void
+palang_application_dispose (GObject *object)
+{
+  PalangApplication *self = PALANG_APPLICATION (object);
+
+  g_clear_object (&self->commands);
+
+  G_OBJECT_CLASS (palang_application_parent_class)->dispose (object);
+}
+
 static void
 palang_application_class_init (PalangApplicationClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
   GApplicationClass *app_class = G_APPLICATION_CLASS (klass);
+
+  object_class->dispose = palang_application_dispose;
 
   /* Override the lifecycle "virtual methods" with our own functions. */
   app_class->startup = palang_application_startup;
@@ -178,6 +214,17 @@ palang_application_class_init (PalangApplicationClass *klass)
 static void
 palang_application_init (PalangApplication *self)
 {
+  /* GListStore is GLib's ready-made GListModel: a list of objects of one
+   * type that tells its users (like a list widget) when it changes. */
+  self->commands = g_list_store_new (PALANG_TYPE_COMMAND);
+
+  for (guint i = 0; i < G_N_ELEMENTS (commands); i++)
+    {
+      g_autoptr (PalangCommand) command = palang_command_new (commands[i].action,
+                                                              commands[i].title,
+                                                              commands[i].accel);
+      g_list_store_append (self->commands, command);
+    }
 }
 
 PalangApplication *

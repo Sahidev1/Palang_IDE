@@ -586,6 +586,106 @@ test_restore_session (Fixture *fixture, gconstpointer data)
   g_assert_true (active_file_is (fixture->window, b));
 }
 
+/* ---- Bottom panel and active editor ------------------------------------- */
+
+static void
+test_toggle_panel (Fixture *fixture, gconstpointer data)
+{
+  GtkWidget *panel = GTK_WIDGET (palang_window_get_panel (fixture->window));
+
+  g_assert_false (gtk_widget_get_visible (panel));
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.toggle-panel", NULL);
+  g_assert_true (gtk_widget_get_visible (panel));
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.toggle-panel", NULL);
+  g_assert_false (gtk_widget_get_visible (panel));
+}
+
+/* Within 2 pixels: the divider's handle takes a pixel of the space. */
+static gboolean
+panel_height_is (PalangWindow *window, gpointer height)
+{
+  int actual = gtk_widget_get_height (GTK_WIDGET (palang_window_get_panel (window)));
+
+  return ABS (actual - GPOINTER_TO_INT (height)) <= 2;
+}
+
+/* The panel's state goes into the session and comes back from it,
+ * including its height on screen. */
+static void
+test_panel_session (Fixture *fixture, gconstpointer data)
+{
+  PalangPanel *panel = palang_window_get_panel (fixture->window);
+  g_autoptr (PalangSession) session = NULL;
+  g_autoptr (PalangWindow) restored = NULL;
+  PalangPanel *restored_panel;
+
+  palang_panel_add_page (panel, gtk_label_new ("A"), "a", "A", NULL);
+  palang_panel_add_page (panel, gtk_label_new ("B"), "b", "B", NULL);
+  palang_panel_set_visible_page (panel, "b");
+  palang_panel_set_visible_page (panel, "no-such-page");  /* ignored */
+  gtk_widget_set_visible (GTK_WIDGET (panel), TRUE);
+
+  /* Not shown on screen: the default height. */
+  session = palang_window_dup_session (fixture->window);
+  g_assert_true (session->show_panel);
+  g_assert_cmpint (session->panel_height, ==, 250);
+  g_assert_cmpstr (session->panel_page, ==, "b");
+  session->panel_height = 180;
+
+  /* A new window with the same pages gets the panel back as it was. */
+  restored = g_object_ref_sink (palang_window_new (NULL));
+  restored_panel = palang_window_get_panel (restored);
+  palang_panel_add_page (restored_panel, gtk_label_new ("A"), "a", "A", NULL);
+  palang_panel_add_page (restored_panel, gtk_label_new ("B"), "b", "B", NULL);
+  palang_window_restore_session (restored, session);
+
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (restored_panel)));
+  g_assert_cmpstr (palang_panel_get_visible_page (restored_panel), ==, "b");
+
+  /* On screen, the panel gets the saved height, and saving again gives the
+   * same number (no pixel lost to the divider each time). */
+  show_window (restored);
+  wait_until (restored, panel_height_is, GINT_TO_POINTER (180));
+  g_clear_pointer (&session, palang_session_free);
+  session = palang_window_dup_session (restored);
+  g_assert_cmpint (session->panel_height, ==, 180);
+
+  gtk_window_destroy (GTK_WINDOW (restored));
+}
+
+static void
+count_notify (GObject *object, GParamSpec *pspec, gpointer count)
+{
+  (*(guint *) count)++;
+}
+
+/* "notify::active-editor" fires when the selected tab changes. */
+static void
+test_active_editor_property (Fixture *fixture, gconstpointer data)
+{
+  guint notifications = 0;
+  PalangEditor *first;
+  g_autoptr (PalangEditor) from_property = NULL;
+
+  g_signal_connect (fixture->window, "notify::active-editor",
+                    G_CALLBACK (count_notify), &notifications);
+
+  palang_window_new_document (fixture->window);
+  first = palang_window_get_active_editor (fixture->window);
+  g_assert_cmpuint (notifications, ==, 1);
+
+  palang_window_new_document (fixture->window);
+  g_assert_cmpuint (notifications, ==, 2);
+  g_assert_true (palang_window_get_active_editor (fixture->window) != first);
+
+  g_object_get (fixture->window, "active-editor", &from_property, NULL);
+  g_assert_true (from_property == palang_window_get_active_editor (fixture->window));
+
+  gtk_widget_activate_action (GTK_WIDGET (fixture->window), "win.close-tab", NULL);
+  g_assert_true (palang_window_get_active_editor (fixture->window) == first);
+  g_assert_cmpuint (notifications, ==, 3);
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -617,6 +717,9 @@ main (int   argc,
   ADD_TEST ("/window/deleted-file-shows-banner", test_deleted_file_shows_banner);
   ADD_TEST ("/window/dup-session", test_dup_session);
   ADD_TEST ("/window/restore-session", test_restore_session);
+  ADD_TEST ("/window/toggle-panel", test_toggle_panel);
+  ADD_TEST ("/window/panel-session", test_panel_session);
+  ADD_TEST ("/window/active-editor-property", test_active_editor_property);
 
 #undef ADD_TEST
 

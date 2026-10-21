@@ -23,6 +23,7 @@ palang_session_free (PalangSession *session)
     return;
 
   g_clear_object (&session->folder);
+  g_free (session->panel_page);
   g_ptr_array_unref (session->files);
   g_free (session);
 }
@@ -60,6 +61,10 @@ palang_session_save (const PalangSession  *session,
                               (const char * const *) uri_list, g_strv_length (uri_list));
   g_key_file_set_integer (key_file, GROUP, "active", session->active);
   g_key_file_set_boolean (key_file, GROUP, "show-sidebar", session->show_sidebar);
+  g_key_file_set_boolean (key_file, GROUP, "show-panel", session->show_panel);
+  g_key_file_set_integer (key_file, GROUP, "panel-height", session->panel_height);
+  if (session->panel_page != NULL)
+    g_key_file_set_string (key_file, GROUP, "panel-page", session->panel_page);
 
   g_mkdir_with_parents (directory, 0700);
   return g_key_file_save_to_file (key_file, path, error);
@@ -95,6 +100,13 @@ palang_session_load (const char *path)
     session->active = session->files->len > 0 ? 0 : -1;
 
   session->show_sidebar = g_key_file_get_boolean (key_file, GROUP, "show-sidebar", NULL);
+  session->show_panel = g_key_file_get_boolean (key_file, GROUP, "show-panel", NULL);
+
+  session->panel_height = g_key_file_get_integer (key_file, GROUP, "panel-height", NULL);
+  if (session->panel_height < 0)
+    session->panel_height = 0;
+
+  session->panel_page = g_key_file_get_string (key_file, GROUP, "panel-page", NULL);
 
   return g_steal_pointer (&session);
 }
