@@ -5,3 +5,9 @@
 window.palang-window {
   -gtk-icon-palette: warning #f5b041;
 }
+
+/* The amber accent in dark mode (see style.css): the logo's own amber, with
+ * dark text on it (white on bright amber is hard to read). */
+@define-color accent_bg_color #f5b041;
+@define-color accent_fg_color rgba(0, 0, 0, 0.87);
+@define-color accent_color #f5b041;

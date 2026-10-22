@@ -122,15 +122,17 @@ on_setup_row (GtkSignalListItemFactory *factory,
   gtk_list_item_set_child (list_item, box);
 }
 
-/* The icon and its color for a severity. "error", "warning" and "accent"
- * are libadwaita style classes that color a symbolic icon. */
+/* The icon and its color for a severity. "error" and "warning" are
+ * libadwaita style classes that color a symbolic icon; "palang-info" is
+ * ours (blue, data/style.css), since the accent color is amber like a
+ * warning. */
 static void
 set_severity_icon (GtkWidget         *icon,
                    PalangLspSeverity  severity)
 {
   gtk_widget_remove_css_class (icon, "error");
   gtk_widget_remove_css_class (icon, "warning");
-  gtk_widget_remove_css_class (icon, "accent");
+  gtk_widget_remove_css_class (icon, "palang-info");
 
   switch (severity)
     {
@@ -144,7 +146,7 @@ set_severity_icon (GtkWidget         *icon,
       break;
     default:
       gtk_image_set_from_icon_name (GTK_IMAGE (icon), "palang-info-symbolic");
-      gtk_widget_add_css_class (icon, "accent");
+      gtk_widget_add_css_class (icon, "palang-info");
       break;
     }
 }

@@ -235,6 +235,11 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `style-dark.css`. Use them instead of
   Adwaita's names; add a new one the same way. The file tree picks file
   icons by content type (`icon_name_for ()` in `palang-file-tree.c`).
+- **Look:** square corners everywhere (`* { border-radius: 0 }`), the
+  libadwaita accent color redefined as the logo's amber, and the main
+  window's solid frame; all in `data/style.css` (+ `style-dark.css` for
+  dark-mode values). Don't use the `accent` class to mean "info" (it is
+  amber, like a warning): use `palang-info` (blue).
 - **App stylesheet:** `data/style.css`, loaded by AdwApplication by
   itself (it's in the resource-base-path). Add Palang's own CSS there
   (later: ghost text, math blocks); give widgets a `palang-…` class.

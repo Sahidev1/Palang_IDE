@@ -4,6 +4,23 @@
  * the application's resource-base-path (listed in palang.gresource.xml).
  */
 
+/* The accent color is the logo's amber instead of libadwaita's blue:
+ * switches, selections, focus outlines, highlighted buttons. libadwaita
+ * draws them with these named colors (@define-color), and the app's
+ * definitions replace its own. accent_bg_color fills a widget,
+ * accent_fg_color is text on that fill, accent_color is amber text or
+ * lines on the normal background (darker here, to stay readable on white).
+ * style-dark.css has the dark-mode values. */
+@define-color accent_bg_color #c37d0d;
+@define-color accent_fg_color white;
+@define-color accent_color #9a5b00;
+
+/* Info icons in the Problems page stay blue, so they don't look like
+ * warnings now that the accent is amber. */
+.palang-info {
+  color: @blue_3;
+}
+
 /* Square corners everywhere, like the window's frame below. GTK lets a
  * style provider with a higher priority win whatever its selectors are, and
  * this file is applied above libadwaita's theme, so "*" (every widget)
