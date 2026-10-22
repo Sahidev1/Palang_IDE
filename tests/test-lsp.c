@@ -17,6 +17,7 @@
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
 #include "palang-lsp-markdown.h"
+#include "palang-lsp-problems-panel.h"
 #include "palang-lsp-snippet.h"
 #include "palang-lsp-position.h"
 
@@ -1894,6 +1895,131 @@ test_completion_not_supported (Fixture *fixture, gconstpointer data)
   dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
 }
 
+/* ---- Problems ------------------------------------------------------------ */
+
+/* Checks the @n-th problem of @problems. */
+static void
+assert_problem (GListModel        *problems,
+                guint              n,
+                const char        *file_name,
+                guint              line,
+                guint              column,
+                PalangLspSeverity  severity,
+                const char        *message)
+{
+  g_autoptr (PalangLspProblem) problem = g_list_model_get_item (problems, n);
+  g_autofree char *name = NULL;
+
+  g_assert_nonnull (problem);
+  name = g_file_get_basename (palang_lsp_problem_get_file (problem));
+  g_assert_cmpstr (name, ==, file_name);
+  g_assert_cmpuint (palang_lsp_problem_get_line (problem), ==, line);
+  g_assert_cmpuint (palang_lsp_problem_get_column (problem), ==, column);
+  g_assert_cmpint (palang_lsp_problem_get_severity (problem), ==, severity);
+  g_assert_cmpstr (palang_lsp_problem_get_message (problem), ==, message);
+  g_assert_cmpstr (palang_lsp_problem_get_source (problem), ==, "fake");
+}
+
+/* The manager's problems list: every open document's diagnostics, sorted
+ * by file and position (columns in characters), kept up to date. */
+static void
+test_problems_list (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path,
+                                                      "--full-sync --diagnose");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  /* Added second, but "a.c" sorts first. */
+  g_autoptr (PalangDocument) b = load_new_file (fixture, "b.c", "int bad;\n");
+  g_autoptr (PalangDocument) a = load_new_file (fixture, "a.c", "\xf0\x9f\x98\x80 meh\nbad\n");
+  GListModel *problems = palang_lsp_manager_get_problems (manager);
+  PalangLspClient *client;
+  GtkTextIter start, end;
+
+  palang_lsp_manager_add_document (manager, b);
+  palang_lsp_manager_add_document (manager, a);
+  wait_for_diagnostics (palang_lsp_manager_get_lsp_document (manager, a), 2);
+  wait_for_diagnostics (palang_lsp_manager_get_lsp_document (manager, b), 1);
+
+  g_assert_cmpuint (g_list_model_get_n_items (problems), ==, 3);
+  assert_problem (problems, 0, "a.c", 0, 2, PALANG_LSP_SEVERITY_WARNING, "meh");
+  assert_problem (problems, 1, "a.c", 1, 0, PALANG_LSP_SEVERITY_ERROR, "bad");
+  assert_problem (problems, 2, "b.c", 0, 4, PALANG_LSP_SEVERITY_ERROR, "bad");
+
+  /* Fixing b.c's "bad" takes it off the list. */
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (b), &start, 0, 4);
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (b), &end, 0, 7);
+  gtk_text_buffer_delete (GTK_TEXT_BUFFER (b), &start, &end);
+  wait_for_diagnostics (palang_lsp_manager_get_lsp_document (manager, b), 0);
+  g_assert_cmpuint (g_list_model_get_n_items (problems), ==, 2);
+
+  /* Closing a.c takes its problems off. */
+  client = palang_lsp_manager_get_client (manager, a);
+  palang_lsp_manager_remove_document (manager, a);
+  g_assert_cmpuint (g_list_model_get_n_items (problems), ==, 0);
+
+  dispose_manager_and_wait (fixture, manager, client);
+}
+
+/* Returns: (transfer none) (nullable): the first widget of @type inside
+ * @widget (depth first). */
+static GtkWidget *
+find_child_of_type (GtkWidget *widget,
+                    GType      type)
+{
+  if (G_TYPE_CHECK_INSTANCE_TYPE (widget, type))
+    return widget;
+
+  for (GtkWidget *child = gtk_widget_get_first_child (widget); child != NULL;
+       child = gtk_widget_get_next_sibling (child))
+    {
+      GtkWidget *found = find_child_of_type (child, type);
+
+      if (found != NULL)
+        return found;
+    }
+
+  return NULL;
+}
+
+static void
+on_problem_activated (PalangLspProblemsPanel  *panel,
+                      PalangLspProblem        *problem,
+                      PalangLspProblem       **activated)
+{
+  g_set_object (activated, problem);
+}
+
+/* The panel says "no problems" until there are some; activating a row
+ * emits "problem-activated" with its problem. */
+static void
+test_problems_panel (void)
+{
+  g_autoptr (GListStore) problems = g_list_store_new (PALANG_TYPE_LSP_PROBLEM);
+  g_autoptr (GFile) file = g_file_new_for_path ("/tmp/x.c");
+  g_autoptr (PalangLspProblem) problem =
+    palang_lsp_problem_new (file, 4, 2, PALANG_LSP_SEVERITY_ERROR, "oops", NULL);
+  g_autoptr (PalangLspProblem) activated = NULL;
+  PalangLspProblemsPanel *panel = palang_lsp_problems_panel_new (G_LIST_MODEL (problems));
+  GtkWidget *window = gtk_window_new ();
+  GtkStack *stack;
+
+  gtk_window_set_child (GTK_WINDOW (window), GTK_WIDGET (panel));
+  g_signal_connect (panel, "problem-activated", G_CALLBACK (on_problem_activated), &activated);
+  stack = GTK_STACK (find_child_of_type (GTK_WIDGET (panel), GTK_TYPE_STACK));
+
+  g_assert_cmpstr (gtk_stack_get_visible_child_name (stack), ==, "empty");
+  g_list_store_append (problems, problem);
+  g_assert_cmpstr (gtk_stack_get_visible_child_name (stack), ==, "list");
+
+  g_signal_emit_by_name (find_child_of_type (GTK_WIDGET (panel), GTK_TYPE_LIST_VIEW), "activate", 0);
+  g_assert_true (activated == problem);
+
+  g_list_store_remove_all (problems);
+  g_assert_cmpstr (gtk_stack_get_visible_child_name (stack), ==, "empty");
+
+  gtk_window_destroy (GTK_WINDOW (window));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -1914,6 +2040,7 @@ main (int   argc,
   g_test_add_func ("/lsp/completion/item-snippet", test_completion_item_snippet);
   g_test_add_func ("/lsp/completion/item-documentation", test_completion_item_documentation);
   g_test_add_func ("/lsp/snippet/parse", test_snippet_parse);
+  g_test_add_func ("/lsp/problems/panel", test_problems_panel);
 
 #define ADD_TEST(path, func) \
   g_test_add (path, Fixture, NULL, fixture_setup, func, fixture_teardown)
@@ -1935,6 +2062,7 @@ main (int   argc,
   ADD_TEST ("/lsp/sync/reopens-after-restart", test_sync_reopens_after_restart);
   ADD_TEST ("/lsp/diagnostics/shown-and-updated", test_diagnostics_shown_and_updated);
   ADD_TEST ("/lsp/diagnostics/stale-dropped", test_diagnostics_stale_dropped);
+  ADD_TEST ("/lsp/problems/list", test_problems_list);
   g_test_add ("/lsp/definition/location", Fixture, "--definition 0:3",
               fixture_setup, test_definition_found, fixture_teardown);
   g_test_add ("/lsp/definition/location-link", Fixture, "--definition 0:3 --definition-link",

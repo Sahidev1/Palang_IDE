@@ -40,6 +40,24 @@ struct _PalangLspDocument
 
 G_DEFINE_FINAL_TYPE (PalangLspDocument, palang_lsp_document, G_TYPE_OBJECT)
 
+enum {
+  SIGNAL_DIAGNOSTICS_CHANGED,
+  N_SIGNALS
+};
+
+static guint signals[N_SIGNALS];
+
+/* Removes the diagnostics, saying so if there were any. */
+static void
+clear_diagnostics (PalangLspDocument *self)
+{
+  gboolean had_some = palang_lsp_diagnostics_get_count (self->diagnostics) > 0;
+
+  palang_lsp_diagnostics_clear (self->diagnostics);
+  if (had_some)
+    g_signal_emit (self, signals[SIGNAL_DIAGNOSTICS_CHANGED], 0);
+}
+
 /* ---- Opening and closing ------------------------------------------------ */
 
 /* Returns: (transfer full) (nullable): the LSP language id of the
@@ -119,7 +137,7 @@ close_document (PalangLspDocument *self)
   palang_lsp_client_notify (self->client, "textDocument/didClose", params);
 
   /* The server's diagnostics don't apply once it no longer has the file. */
-  palang_lsp_diagnostics_clear (self->diagnostics);
+  clear_diagnostics (self);
   g_clear_pointer (&self->open_uri, g_free);
   g_clear_pointer (&self->open_language_id, g_free);
 }
@@ -130,7 +148,7 @@ static void
 on_client_ready (PalangLspClient   *client,
                  PalangLspDocument *self)
 {
-  palang_lsp_diagnostics_clear (self->diagnostics);
+  clear_diagnostics (self);
   g_clear_pointer (&self->open_uri, g_free);
   g_clear_pointer (&self->open_language_id, g_free);
   open_document (self);
@@ -318,6 +336,22 @@ palang_lsp_document_set_diagnostics (PalangLspDocument *self,
     }
 
   palang_lsp_diagnostics_set (self->diagnostics, diagnostics);
+  g_signal_emit (self, signals[SIGNAL_DIAGNOSTICS_CHANGED], 0);
+}
+
+GPtrArray *
+palang_lsp_document_dup_problems (PalangLspDocument *self)
+{
+  GFile *file;
+
+  g_return_val_if_fail (PALANG_IS_LSP_DOCUMENT (self), NULL);
+
+  /* Untitled documents never reach a server, so have no diagnostics. */
+  file = palang_document_get_file (self->document);
+  if (file == NULL)
+    return g_ptr_array_new_with_free_func (g_object_unref);
+
+  return palang_lsp_diagnostics_dup_problems (self->diagnostics, file);
 }
 
 guint
@@ -402,6 +436,13 @@ static void
 palang_lsp_document_class_init (PalangLspDocumentClass *klass)
 {
   G_OBJECT_CLASS (klass)->dispose = palang_lsp_document_dispose;
+
+  signals[SIGNAL_DIAGNOSTICS_CHANGED] =
+    g_signal_new ("diagnostics-changed",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
+                  G_TYPE_NONE, 0);
 }
 
 static void

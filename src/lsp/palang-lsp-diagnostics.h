@@ -20,6 +20,8 @@
 
 #include <gtksourceview/gtksource.h>
 
+#include "palang-lsp-problem.h"
+
 G_BEGIN_DECLS
 
 typedef struct _PalangLspDiagnostics PalangLspDiagnostics;
@@ -37,6 +39,11 @@ void                  palang_lsp_diagnostics_set         (PalangLspDiagnostics *
 
 /* Removes everything shown. */
 void                  palang_lsp_diagnostics_clear       (PalangLspDiagnostics *self);
+
+/* Returns: (transfer full): a PalangLspProblem for every diagnostic
+ * shown, in @file, at its current position (a GPtrArray, freed with it). */
+GPtrArray            *palang_lsp_diagnostics_dup_problems (PalangLspDiagnostics *self,
+                                                           GFile                *file);
 
 /* Returns: how many diagnostics are shown. */
 guint                 palang_lsp_diagnostics_get_count   (PalangLspDiagnostics *self);

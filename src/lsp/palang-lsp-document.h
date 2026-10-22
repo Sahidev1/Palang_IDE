@@ -17,7 +17,8 @@
  *
  * It also shows the server's diagnostics in the document (see
  * palang-lsp-diagnostics.h), and removes them when the document leaves
- * the server.
+ * the server. Signal "diagnostics-changed" (no arguments): they were
+ * replaced or removed.
  *
  * Created by PalangLspManager, one per tracked document.
  */
@@ -69,6 +70,11 @@ gint64             palang_lsp_document_get_version  (PalangLspDocument *self);
 void               palang_lsp_document_set_diagnostics (PalangLspDocument *self,
                                                         gint64             version,
                                                         GVariant          *diagnostics);
+
+/* Returns: (transfer full): a PalangLspProblem for each diagnostic shown
+ * (a GPtrArray, freed with it; empty for an untitled document). The
+ * "diagnostics-changed" signal says when this changes. */
+GPtrArray         *palang_lsp_document_dup_problems (PalangLspDocument *self);
 
 /* Returns: how many diagnostics are shown. */
 guint              palang_lsp_document_get_n_diagnostics (PalangLspDocument *self);

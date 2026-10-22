@@ -24,8 +24,10 @@ main.c → PalangApplication (app/)
                │     selected tab = "active-editor" property
                ├ PalangPanel (app/) under the tabs, Ctrl+J
                │     ├ "terminal": PalangTerminal (terminal/)
-               │     └ "search":   PalangSearchPanel (search/)
-               │           "match-activated" → palang_window_open_file_at ()
+               │     ├ "search":   PalangSearchPanel (search/)
+               │     │     "match-activated" → palang_window_open_file_at ()
+               │     └ "problems": PalangLspProblemsPanel (lsp/), Ctrl+Shift+M
+               │           "problem-activated" → palang_window_open_file_at ()
                ├ PalangPalette (palette/) dialogs: Ctrl+Shift+P, Ctrl+P
                ├ PalangLspManager (lsp/), wired in palang-window-lsp.c
                │     "root" ──bound──▶ manager "folder"
@@ -137,7 +139,7 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 
 | Header | Use it for |
 |---|---|
-| `palang-lsp-manager.h` | **PalangLspManager**, the language servers of one window: property `folder`; `add_document ()` / `remove_document ()` for every tab; `add_view ()` for its view (gutter icons, hover); `restart ()`; `get_client ()` / `get_lsp_document ()` for a document; `find_definition_async ()`, `hover_async ()` (Markdown), `complete_async ()`, `resolve_completion_async ()`. Signal `server-failed (message)`. **Start here.** |
+| `palang-lsp-manager.h` | **PalangLspManager**, the language servers of one window: property `folder`; `add_document ()` / `remove_document ()` for every tab; `add_view ()` for its view (gutter icons, hover); `restart ()`; `get_client ()` / `get_lsp_document ()` for a document; `find_definition_async ()`, `hover_async ()` (Markdown), `complete_async ()`, `resolve_completion_async ()`, `get_problems ()` (live list of every open document's diagnostics). Signal `server-failed (message)`. **Start here.** |
 | `palang-lsp-client.h` | **PalangLspClient**, one server process: `start`, `stop` (polite, then killed after 2 s; holds the app), `call_async` (requests), `notify` (notifications), `get_capabilities ()`, `get_sync_kind ()`. Signals `ready` (also after each restart), `failed (message)`, `notification (method, params)`. |
 | `palang-lsp-document.h` | **PalangLspDocument**, one document as its server sees it: the sync (didOpen/didChange/didSave/didClose), `get_version ()`, `get_uri ()`, diagnostics (`set_diagnostics ()`, `dup_messages_at ()`). |
 | `palang-lsp-diagnostics.h` | Shows diagnostics in a buffer (tags, gutter marks, messages by position); used by PalangLspDocument. |
@@ -145,6 +147,8 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 | `palang-lsp-completion-provider.h` | **PalangLspCompletionProvider**, the `GtkSourceCompletionProvider`: asks the server while typing, after its trigger characters and on Ctrl+Space; filters and sorts by what is typed; asks again while the server's list is incomplete. |
 | `palang-lsp-completion-item.h` | **PalangLspCompletionItem**, one entry (a `GtkSourceCompletionProposal`): label, detail, kind, documentation (Markdown), fuzzy `match ()`/`compare ()`, `insert ()` into a view (textEdit, additionalTextEdits, snippets with Tab stops, one undo step), `apply_resolved ()`. |
 | `palang-lsp-snippet.h` | LSP snippet syntax (`${1:text}`, `$0`, choices, escapes) → parts (text / tab stops), and → plain text. Pure, unit-tested. |
+| `palang-lsp-problem.h` | **PalangLspProblem**: one diagnostic as a value (file, line, column, severity, message, source), sorted with `compare ()`. |
+| `palang-lsp-problems-panel.h` | **PalangLspProblemsPanel**, the Problems page: a list of PalangLspProblem; signal `problem-activated`. |
 | `palang-lsp-markdown.h` | The servers' Markdown → Pango markup for a GtkLabel (code, headings, emphasis; the rest as plain text); `_escape ()` for plain-text answers. Use it for completion documentation too. |
 | `palang-lsp-position.h` | Editor characters ↔ LSP UTF-16 units: pure functions and iter wrappers. **Every** position to or from a server goes through these. |
 | `palang-lsp-languages.h` | GtkSourceView language id → server (key, title, install hint) and LSP language id. Add a language here. |
@@ -185,9 +189,10 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   snippet library (CLAUDE.md gotcha 17). The Details pane asks the server
   for documentation (`completionItem/resolve`) when an entry is shown
   there.
-- **Rest of 2c:** a Problems page would listen for diagnostics changes (a
-  new signal on PalangLspManager) and be added with
-  `palang_panel_add_page ()`.
+- **Problems:** PalangLspDocument emits `diagnostics-changed`; the manager
+  rebuilds `get_problems ()` from all documents (positions as they are
+  then: servers re-send after edits). The window adds the Problems page
+  (`win.show-problems`, Ctrl+Shift+M) in `palang-window-lsp.c`.
 - **Phase 3 (ghost text) must not reach servers:** didChange is sent from
   `insert-text`/`delete-range`, so ghost text has to be shown without
   inserting into the buffer, or PalangLspDocument must skip it.
@@ -216,7 +221,8 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `win.search-project`, `win.command-palette`, `win.quick-open`,
   `win.save`, `win.save-as`, `win.save-all`, `win.close-tab`, `win.find`,
   `win.replace`, `win.find-next`, `win.find-previous`, `win.go-to-line`,
-  `win.go-to-definition` (F12), `win.restart-language-servers`.
+  `win.go-to-definition` (F12), `win.restart-language-servers`,
+  `win.show-problems` (Ctrl+Shift+M).
 - **App stylesheet:** `data/style.css`, loaded by AdwApplication by
   itself (it's in the resource-base-path). Add Palang's own CSS there
   (later: ghost text, math blocks); give widgets a `palang-…` class.

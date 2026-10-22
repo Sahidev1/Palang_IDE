@@ -32,9 +32,12 @@ static const Style styles[] = {
 };
 
 typedef struct {
-  GtkTextMark *start;  /* owned by the buffer; deleted in clear */
+  GtkTextMark *start;     /* owned by the buffer; deleted in clear */
   GtkTextMark *end;
-  char        *text;   /* "Error: … (clang)" */
+  char        *text;      /* "Error: … (clang)" */
+  gint64       severity;  /* the protocol's number, 1 to 4 */
+  char        *message;   /* the message alone */
+  char        *source;    /* nullable: "clang" */
 } Diagnostic;
 
 struct _PalangLspDiagnostics
@@ -117,6 +120,13 @@ add_diagnostic (PalangLspDiagnostics *self,
   GtkTextIter start, end, line_start;
   Diagnostic entry;
 
+  /* The strings read below point into @diagnostic. A GVariant built in
+   * memory (not parsed from bytes) is turned into its byte form the
+   * first time g_variant_get_data () runs on it, which g_variant_lookup ()
+   * does, and that frees the pieces earlier pointers point into. Turning
+   * it into bytes first keeps every pointer valid. */
+  g_variant_get_data (diagnostic);
+
   /* JSONRPC_MESSAGE_PARSE is the reading twin of JSONRPC_MESSAGE_NEW: it
    * fills in the variables and returns FALSE if something is missing. */
   if (!JSONRPC_MESSAGE_PARSE (diagnostic,
@@ -163,6 +173,9 @@ add_diagnostic (PalangLspDiagnostics *self,
     entry.text = g_strdup_printf ("%s: %s (%s)", label_for_severity (severity), message, source);
   else
     entry.text = g_strdup_printf ("%s: %s", label_for_severity (severity), message);
+  entry.severity = CLAMP (severity, 1, 4);
+  entry.message = g_strdup (message);
+  entry.source = source != NULL && source[0] != '\0' ? g_strdup (source) : NULL;
   g_array_append_val (self->diagnostics, entry);
 }
 
@@ -225,8 +238,37 @@ palang_lsp_diagnostics_clear (PalangLspDiagnostics *self)
       gtk_text_buffer_delete_mark (buffer, entry->start);
       gtk_text_buffer_delete_mark (buffer, entry->end);
       g_free (entry->text);
+      g_free (entry->message);
+      g_free (entry->source);
     }
   g_array_set_size (self->diagnostics, 0);
+}
+
+GPtrArray *
+palang_lsp_diagnostics_dup_problems (PalangLspDiagnostics *self,
+                                     GFile                *file)
+{
+  GPtrArray *problems = g_ptr_array_new_with_free_func (g_object_unref);
+
+  g_return_val_if_fail (self != NULL, problems);
+  g_return_val_if_fail (G_IS_FILE (file), problems);
+
+  for (guint i = 0; i < self->diagnostics->len; i++)
+    {
+      Diagnostic *entry = &g_array_index (self->diagnostics, Diagnostic, i);
+      GtkTextIter start;
+
+      /* Where the mark is now: it moved along with any edits. */
+      gtk_text_buffer_get_iter_at_mark (GTK_TEXT_BUFFER (self->buffer), &start, entry->start);
+      g_ptr_array_add (problems,
+                       palang_lsp_problem_new (file,
+                                               gtk_text_iter_get_line (&start),
+                                               gtk_text_iter_get_line_offset (&start),
+                                               (PalangLspSeverity) entry->severity,
+                                               entry->message, entry->source));
+    }
+
+  return problems;
 }
 
 guint

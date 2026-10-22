@@ -95,6 +95,7 @@ fake_lsp_server = executable('fake-lsp-server',
 
 test_lsp = executable('test-lsp',
   'test-lsp.c',
+  palang_resources,  # the Problems page's template
   link_with: libpalang,
   dependencies: palang_deps,
   include_directories: [config_inc, palang_inc],

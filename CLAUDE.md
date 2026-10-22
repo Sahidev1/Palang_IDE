@@ -194,6 +194,12 @@ the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
     pane too wide to place isn't shown at all; give the cell a wrapped
     widget. An empty cell keeps the pane closed, and filling it later
     doesn't open it: show "Loading…" while asking the server.
+19. **Pointers into a GVariant (`"&s"`, `JSONRPC_MESSAGE_GET_STRING`) can
+    dangle** if the variant was built in memory: the first
+    `g_variant_get_data ()` (which `g_variant_lookup ()` calls) turns it
+    into bytes and frees the old pieces. Call `g_variant_get_data ()`
+    before taking pointers, or copy strings at once
+    (`palang-lsp-diagnostics.c`, found by ASan in 2c.4).
 
 ## Memory
 

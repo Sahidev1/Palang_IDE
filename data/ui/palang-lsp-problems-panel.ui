@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The Problems page of the bottom panel. Behaviour lives in
+     src/lsp/palang-lsp-problems-panel.c. -->
+<interface>
+  <template class="PalangLspProblemsPanel" parent="AdwBin">
+    <property name="child">
+      <!-- Either a note that there is nothing, or the list. The code
+           switches pages by name (it reaches the stack with
+           adw_bin_get_child (): see CLAUDE.md, gotcha 2). -->
+      <object class="GtkStack">
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">empty</property>
+            <property name="child">
+              <object class="GtkLabel">
+                <property name="label">No problems in the open files.</property>
+                <style>
+                  <class name="dim-label"/>
+                </style>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">list</property>
+            <property name="child">
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar-policy">never</property>
+                <property name="child">
+                  <!-- Model and rows are set up in the code. Not
+                       single-click-activate: that would also select the
+                       row under the pointer (see palang-palette.c). -->
+                  <object class="GtkListView" id="list_view">
+                    <signal name="activate" handler="on_row_activate"/>
+                    <style>
+                      <class name="navigation-sidebar"/>
+                      <class name="palang-problems-list"/>  <!-- see style.css -->
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

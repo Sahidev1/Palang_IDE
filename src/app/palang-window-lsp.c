@@ -215,6 +215,31 @@ on_server_failed (PalangLspManager *manager,
   adw_toast_overlay_add_toast (self->toast_overlay, toast);
 }
 
+/* A row of the Problems page: open the file there. Problems count from
+ * 0, the window from 1. */
+static void
+on_problem_activated (PalangLspProblemsPanel *panel,
+                      PalangLspProblem       *problem,
+                      PalangWindow           *self)
+{
+  palang_window_open_file_at (self, palang_lsp_problem_get_file (problem),
+                              palang_lsp_problem_get_line (problem) + 1,
+                              palang_lsp_problem_get_column (problem) + 1);
+}
+
+/* Ctrl+Shift+M: the Problems page, with the keyboard in its list. */
+static void
+show_problems_action (GtkWidget  *widget,
+                      const char *action_name,
+                      GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+
+  gtk_widget_set_visible (GTK_WIDGET (self->panel), TRUE);
+  palang_panel_set_visible_page (self->panel, "problems");
+  palang_lsp_problems_panel_focus (self->problems_panel);
+}
+
 static void
 restart_language_servers_action (GtkWidget  *widget,
                                  const char *action_name,
@@ -232,6 +257,8 @@ _palang_window_class_init_lsp (GtkWidgetClass *widget_class)
                                    restart_language_servers_action);
   gtk_widget_class_install_action (widget_class, "win.go-to-definition", NULL,
                                    go_to_definition_action);
+  gtk_widget_class_install_action (widget_class, "win.show-problems", NULL,
+                                   show_problems_action);
 }
 
 void
@@ -242,6 +269,14 @@ _palang_window_init_lsp (PalangWindow *self)
   g_object_bind_property (self->file_tree, "root", self->lsp_manager, "folder",
                           G_BINDING_SYNC_CREATE);
   g_signal_connect (self->lsp_manager, "server-failed", G_CALLBACK (on_server_failed), self);
+
+  /* The Problems page lists what the manager's servers found. */
+  self->problems_panel =
+    palang_lsp_problems_panel_new (palang_lsp_manager_get_problems (self->lsp_manager));
+  g_signal_connect (self->problems_panel, "problem-activated",
+                    G_CALLBACK (on_problem_activated), self);
+  palang_panel_add_page (self->panel, GTK_WIDGET (self->problems_panel),
+                         "problems", "Problems", "dialog-warning-symbolic");
   g_signal_connect (self->tab_view, "page-attached", G_CALLBACK (on_page_attached), self);
   g_signal_connect (self->tab_view, "page-detached", G_CALLBACK (on_page_detached), self);
 }

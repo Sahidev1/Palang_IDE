@@ -41,6 +41,10 @@ struct _PalangLspManager
   GHashTable *clients;
 
   GPtrArray *documents;  /* owned PalangLspDocument, one per open document */
+
+  /* Every document's diagnostics as PalangLspProblems, sorted (by file,
+   * then position), rebuilt whenever one document's change. */
+  GListStore *problems;
 };
 
 G_DEFINE_FINAL_TYPE (PalangLspManager, palang_lsp_manager, G_TYPE_OBJECT)
@@ -276,6 +280,57 @@ on_document_language_changed (PalangDocument   *document,
     ensure_client (self, lsp_document);
 }
 
+/* ---- Problems ----------------------------------------------------------- */
+
+static int
+compare_problems (gconstpointer a,
+                  gconstpointer b,
+                  gpointer      user_data)
+{
+  return palang_lsp_problem_compare ((PalangLspProblem *) a, (PalangLspProblem *) b);
+}
+
+/* Rebuilds the problems list from every document. A few hundred entries
+ * at most, so starting over is simpler than patching the list, and
+ * g_list_store_splice () replaces it in one change for the views. */
+static void
+update_problems (PalangLspManager *self)
+{
+  g_autoptr (GPtrArray) all = g_ptr_array_new_with_free_func (g_object_unref);
+
+  for (guint i = 0; i < self->documents->len; i++)
+    {
+      g_autoptr (GPtrArray) problems =
+        palang_lsp_document_dup_problems (g_ptr_array_index (self->documents, i));
+
+      for (guint j = 0; j < problems->len; j++)
+        g_ptr_array_add (all, g_object_ref (g_ptr_array_index (problems, j)));
+    }
+
+  /* g_ptr_array_sort_values_with_data () passes the elements themselves
+   * (the problems) to the compare function. */
+  g_ptr_array_sort_values_with_data (all, compare_problems, NULL);
+  g_list_store_splice (self->problems, 0, g_list_model_get_n_items (G_LIST_MODEL (self->problems)),
+                       all->pdata, all->len);
+}
+
+static void
+on_diagnostics_changed (PalangLspDocument *lsp_document,
+                        PalangLspManager  *self)
+{
+  update_problems (self);
+}
+
+GListModel *
+palang_lsp_manager_get_problems (PalangLspManager *self)
+{
+  g_return_val_if_fail (PALANG_IS_LSP_MANAGER (self), NULL);
+
+  return G_LIST_MODEL (self->problems);
+}
+
+/* ---- Documents ---------------------------------------------------------- */
+
 void
 palang_lsp_manager_add_document (PalangLspManager *self,
                                  PalangDocument   *document)
@@ -292,6 +347,8 @@ palang_lsp_manager_add_document (PalangLspManager *self,
   g_ptr_array_add (self->documents, lsp_document);
   g_signal_connect (document, "notify::language",
                     G_CALLBACK (on_document_language_changed), self);
+  g_signal_connect (lsp_document, "diagnostics-changed",
+                    G_CALLBACK (on_diagnostics_changed), self);
   ensure_client (self, lsp_document);
 }
 
@@ -308,11 +365,13 @@ palang_lsp_manager_remove_document (PalangLspManager *self,
     return;
 
   g_signal_handlers_disconnect_by_data (document, self);
+  g_signal_handlers_disconnect_by_data (g_ptr_array_index (self->documents, index), self);
   /* The array's free function drops the LSP document, which sends
    * didClose. A server keeps running when its last document closes:
    * opening another file of that language is likely, and starting a
    * server can take seconds. */
   g_ptr_array_remove_index (self->documents, index);
+  update_problems (self);
 }
 
 PalangLspClient *
@@ -1108,8 +1167,10 @@ palang_lsp_manager_dispose (GObject *object)
         PalangLspDocument *lsp_document = g_ptr_array_index (self->documents, i);
 
         g_signal_handlers_disconnect_by_data (palang_lsp_document_get_document (lsp_document), self);
+        g_signal_handlers_disconnect_by_data (lsp_document, self);
       }
   g_clear_pointer (&self->documents, g_ptr_array_unref);
+  g_clear_object (&self->problems);
 
   g_clear_object (&self->folder);
 
@@ -1142,6 +1203,7 @@ palang_lsp_manager_init (PalangLspManager *self)
   /* Keys are static strings, so only the values (clients) are freed. */
   self->clients = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_object_unref);
   self->documents = g_ptr_array_new_with_free_func (g_object_unref);
+  self->problems = g_list_store_new (PALANG_TYPE_LSP_PROBLEM);
 }
 
 PalangLspManager *

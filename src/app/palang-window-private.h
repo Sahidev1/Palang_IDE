@@ -23,6 +23,7 @@
 
 #include "palang-file-tree.h"
 #include "palang-lsp-manager.h"
+#include "palang-lsp-problems-panel.h"
 #include "palang-palette.h"
 #include "palang-panel.h"
 #include "palang-search-panel.h"
@@ -53,6 +54,7 @@ struct _PalangWindow
 
   /* The language servers of the open documents (palang-window-lsp.c) */
   PalangLspManager  *lsp_manager;
+  PalangLspProblemsPanel *problems_panel;  /* the panel's Problems page */
 
   /* The open palette, if any (not owned; see show_palette), and the
    * action that opened it. */

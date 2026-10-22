@@ -25,6 +25,7 @@
 #include "palang-document.h"
 #include "palang-lsp-client.h"
 #include "palang-lsp-document.h"
+#include "palang-lsp-problem.h"
 #include "palang-settings.h"
 
 G_BEGIN_DECLS
@@ -137,6 +138,12 @@ void              palang_lsp_manager_resolve_completion_async  (PalangLspManager
 GVariant         *palang_lsp_manager_resolve_completion_finish (PalangLspManager  *self,
                                                                 GAsyncResult      *result,
                                                                 GError           **error);
+
+/* Returns: (transfer none): the errors and warnings of all added
+ * documents, as a GListModel of PalangLspProblem, sorted by file and
+ * position. It stays up to date as servers send new diagnostics and
+ * documents come and go. */
+GListModel       *palang_lsp_manager_get_problems    (PalangLspManager *self);
 
 /* Stops every server and starts the ones the open documents need. Also
  * tries again servers that had failed. */

@@ -4,14 +4,17 @@
  * the application's resource-base-path (listed in palang.gresource.xml).
  */
 
-/* Command palette rows: libadwaita pads the row ("navigation-sidebar"
- * gives it 8px left and right). Move that padding into the row's contents,
- * so the click handler on the contents (palang-palette.c, on_row_clicked)
+/* Command palette and Problems rows: libadwaita pads the row
+ * ("navigation-sidebar" gives it 8px left and right). Move that padding
+ * into the row's contents, so the click handler on the contents
+ * (on_row_clicked in palang-palette.c and palang-lsp-problems-panel.c)
  * covers the whole row. Two classes, so this wins over libadwaita's rule. */
-.navigation-sidebar.palang-palette-list > row {
+.navigation-sidebar.palang-palette-list > row,
+.navigation-sidebar.palang-problems-list > row {
   padding: 0;
 }
 
-.navigation-sidebar.palang-palette-list > row > box {
+.navigation-sidebar.palang-palette-list > row > box,
+.navigation-sidebar.palang-problems-list > row > box {
   padding: 0 8px;
 }

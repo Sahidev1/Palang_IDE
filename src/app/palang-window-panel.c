@@ -134,6 +134,7 @@ static const char * const commands_kept_in_terminal[] = {
   "win.toggle-panel",
   "win.toggle-sidebar",
   "win.search-project",
+  "win.show-problems",
   "win.command-palette",
   "win.quick-open",
   "app.preferences",
