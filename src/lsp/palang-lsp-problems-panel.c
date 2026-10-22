@@ -105,7 +105,6 @@ on_setup_row (GtkSignalListItemFactory *factory,
 
   gtk_label_set_xalign (GTK_LABEL (message), 0);
   gtk_label_set_ellipsize (GTK_LABEL (message), PANGO_ELLIPSIZE_END);
-  gtk_label_set_single_line_mode (GTK_LABEL (message), TRUE);
   gtk_widget_set_hexpand (message, TRUE);
 
   gtk_label_set_xalign (GTK_LABEL (where), 1);
@@ -163,14 +162,17 @@ on_bind_row (GtkSignalListItemFactory *factory,
   const char *source = palang_lsp_problem_get_source (problem);
   g_autofree char *name = g_file_get_basename (palang_lsp_problem_get_file (problem));
   g_autofree char *path = g_file_get_path (palang_lsp_problem_get_file (problem));
+  g_autofree char *one_line = g_strdup (palang_lsp_problem_get_message (problem));
   g_autofree char *location = NULL;
   g_autofree char *tooltip = NULL;
 
   set_severity_icon (icon, palang_lsp_problem_get_severity (problem));
 
-  /* Single-line mode shows a message's line breaks as spaces; the
-   * tooltip has the message as written. */
-  gtk_label_set_text (GTK_LABEL (message), palang_lsp_problem_get_message (problem));
+  /* One line per row: a message's line breaks (clangd adds notes on
+   * further lines) become spaces. (GtkLabel's single-line mode would show
+   * them as ⏎ symbols.) The tooltip has the message as written. */
+  g_strdelimit (one_line, "\r\n", ' ');
+  gtk_label_set_text (GTK_LABEL (message), one_line);
 
   /* Lines count from 1 for people. */
   if (source != NULL)

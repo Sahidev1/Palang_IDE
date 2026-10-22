@@ -65,19 +65,20 @@ gboolean    palang_lsp_completion_item_is_resolved      (PalangLspCompletionItem
 void        palang_lsp_completion_item_apply_resolved   (PalangLspCompletionItem *self,
                                                          GVariant                *resolved);
 
-/* Matches the item against @casefold_typed (what was typed, run through
- * g_utf8_casefold ()) and remembers the result for get_score ().
- * Returns: TRUE if it matches. An empty @casefold_typed matches all. */
+/* Matches the item against @typed (what was typed of the word; case is
+ * ignored) and remembers the result for get_score () and compare ().
+ * Returns: TRUE if it matches. An empty @typed matches all. */
 gboolean    palang_lsp_completion_item_match            (PalangLspCompletionItem *self,
-                                                         const char              *casefold_typed);
+                                                         const char              *typed);
 
 /* Returns: how well the last match () went: lower is better, G_MAXUINT if
  * it didn't match. */
 guint       palang_lsp_completion_item_get_score        (PalangLspCompletionItem *self);
 
-/* Returns: <0 if @a comes before @b in the list (like strcmp): the
- * better match (lower score) first; for equal scores (or nothing typed),
- * the server's order (sort text). */
+/* Returns: <0 if @a comes before @b in the list (like strcmp): first the
+ * entries that start with exactly what was typed (case too: "PRIX8"
+ * before "PRIx8"), then the better match (lower score), then the
+ * server's order (sort text). */
 int         palang_lsp_completion_item_compare          (PalangLspCompletionItem *a,
                                                          PalangLspCompletionItem *b);
 

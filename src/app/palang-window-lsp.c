@@ -227,6 +227,24 @@ on_problem_activated (PalangLspProblemsPanel *panel,
                               palang_lsp_problem_get_column (problem) + 1);
 }
 
+/* Ctrl+Space: the completion list at the cursor, without typing first.
+ * GtkSourceView 5 has no key for this itself (version 4 did). */
+static void
+show_completions_action (GtkWidget  *widget,
+                         const char *action_name,
+                         GVariant   *parameter)
+{
+  PalangEditor *editor = palang_window_get_active_editor (PALANG_WINDOW (widget));
+  GtkSourceView *view;
+
+  if (editor == NULL)
+    return;
+
+  view = palang_editor_get_view (editor);
+  gtk_widget_grab_focus (GTK_WIDGET (view));
+  gtk_source_completion_show (gtk_source_view_get_completion (view));
+}
+
 /* Ctrl+Shift+M: the Problems page, with the keyboard in its list. */
 static void
 show_problems_action (GtkWidget  *widget,
@@ -259,6 +277,8 @@ _palang_window_class_init_lsp (GtkWidgetClass *widget_class)
                                    go_to_definition_action);
   gtk_widget_class_install_action (widget_class, "win.show-problems", NULL,
                                    show_problems_action);
+  gtk_widget_class_install_action (widget_class, "win.show-completions", NULL,
+                                   show_completions_action);
 }
 
 void

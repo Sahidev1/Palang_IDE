@@ -65,7 +65,7 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 meson setup build                 # debug + ASan/UBSan + -Werror by default
 ninja -C build
 ninja -C build run                # runs with the LSan suppressions
-meson test -C build               # 14 programs, 116 cases; UI tests via xvfb-run
+meson test -C build               # 14 programs, 136 cases; UI tests via xvfb-run
 tools/build-deb.sh                # .deb of the last *commit* into build-deb/
 ```
 
@@ -115,8 +115,8 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 0 Setup | ✅ |
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
 | 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests passed (dialog stacking fixed afterwards) |
-| 2b LSP client (core, sync, diagnostics, go to definition) | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2b) not yet run by sahi |
-| 2c LSP hover + completion | **next** (`docs/plan/phase-2.md` §2c, `docs/interfaces.md` lsp/ "For 2c") |
+| 2b LSP client (core, sync, diagnostics, go to definition) | ✅ done; manual tests passed (JavaScript from the menu: full path, see PROGRESS.md 2c) |
+| 2c LSP hover, completion (snippets, Details pane), Problems page | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2c) not yet run by sahi |
 | 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
 Open items: **no license chosen** (`debian/copyright` says TBD), the icon
@@ -210,11 +210,12 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Phase 2b is done (PROGRESS.md, Phase 2b; guide `docs/03-how-phase-2b-works.md`).
-First read sahi's results in MANUAL_TESTS.md, Phase 2b, and investigate
-failures. Then Phase 2c: hover information and completion, maybe the
-Problems page; discuss the plan with sahi first (`docs/plan/phase-2.md`
-§2c, `docs/interfaces.md` lsp/ "For 2c").
+Phase 2 is done (PROGRESS.md, Phase 2c; guide `docs/04-how-phase-2c-works.md`).
+First read sahi's results in MANUAL_TESTS.md, Phase 2c, and investigate
+failures. Then the next phase: Phase 3 (AI autocomplete, ghost text) or
+Phase 4 (math symbols); the order is open decision 5 in PLAN.md §5.
+Discuss with sahi first; read that phase's file in `docs/plan/` and the
+"Phase 3" notes in `docs/interfaces.md` (editor/ and lsp/).
 
 - Installed and working: clangd, pylsp + python3-pyflakes,
   typescript-language-server + TypeScript 5 (under nvm's Node 23).

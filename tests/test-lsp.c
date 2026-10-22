@@ -1562,12 +1562,26 @@ test_completion_item_matching (void)
   g_assert_cmpuint (palang_lsp_completion_item_get_score (other), ==, G_MAXUINT);
   g_assert_cmpint (palang_lsp_completion_item_compare (short_name, long_name), <, 0);
 
-  /* Case is ignored in the item (the caller casefolds what is typed). */
+  /* Case is ignored... */
   g_assert_true (palang_lsp_completion_item_match (camel_case, "gtkw"));
+  g_assert_true (palang_lsp_completion_item_match (camel_case, "GTKW"));
 
   g_assert_true (palang_lsp_completion_item_match (long_name, ""));
   g_assert_true (palang_lsp_completion_item_match (short_name, ""));
   g_assert_cmpint (palang_lsp_completion_item_compare (long_name, short_name), <, 0);
+
+  /* ...but an entry starting with exactly what was typed comes first,
+   * whatever the matcher's score and the server's order. */
+  {
+    g_autoptr (PalangLspCompletionItem) lower = item_from_json (
+      "{\"label\": \"PRIx8\", \"sortText\": \"1\"}");
+    g_autoptr (PalangLspCompletionItem) upper = item_from_json (
+      "{\"label\": \"PRIX8\", \"sortText\": \"2\"}");
+
+    g_assert_true (palang_lsp_completion_item_match (lower, "PRIX8"));
+    g_assert_true (palang_lsp_completion_item_match (upper, "PRIX8"));
+    g_assert_cmpint (palang_lsp_completion_item_compare (upper, lower), <, 0);
+  }
 }
 
 /* Inserting replaces the typed word (from the server's start, if given),

@@ -6,7 +6,7 @@ without reading its implementation. **The headers are the full contract**
 module is for, how the modules connect, and where later phases plug in.
 
 Updated at the end of every phase (see ARCHITECTURE.md §5).
-Last updated: end of Phase 2b (2026-10-21).
+Last updated: end of Phase 2c (2026-10-22).
 
 ## How the pieces connect
 
@@ -183,7 +183,11 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   provider watches keys from the view's parent (CLAUDE.md gotcha 16).
 - **Phase 3 (AI completion)** can be a second `GtkSourceCompletionProvider`
   on the same view, or ghost text beside it; `add_view ()` sets the
-  view's completion to `select-on-show` and hides icons.
+  view's completion to `select-on-show` and hides icons. **Tab is already
+  taken** three ways: by the completion popup (takes the entry), inside a
+  snippet (next place to fill in), else it indents. Accepting ghost text
+  with Tab needs a rule for which wins; keys reach a controller on the
+  view's parent first (CLAUDE.md gotcha 16).
 - **Snippets:** `add_view ()` turns on the view's `enable-snippets` (Tab
   moves through a snippet's places) and empties GtkSourceView's own
   snippet library (CLAUDE.md gotcha 17). The Details pane asks the server
@@ -222,7 +226,8 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `win.save`, `win.save-as`, `win.save-all`, `win.close-tab`, `win.find`,
   `win.replace`, `win.find-next`, `win.find-previous`, `win.go-to-line`,
   `win.go-to-definition` (F12), `win.restart-language-servers`,
-  `win.show-problems` (Ctrl+Shift+M).
+  `win.show-problems` (Ctrl+Shift+M), `win.show-completions`
+  (Ctrl+Space).
 - **App stylesheet:** `data/style.css`, loaded by AdwApplication by
   itself (it's in the resource-base-path). Add Palang's own CSS there
   (later: ghost text, math blocks); give widgets a `palang-…` class.

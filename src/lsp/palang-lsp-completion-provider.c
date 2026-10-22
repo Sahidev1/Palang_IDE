@@ -70,7 +70,7 @@ G_DEFINE_FINAL_TYPE_WITH_CODE (PalangLspCompletionProvider, palang_lsp_completio
  * with the model. */
 typedef struct {
   GListStore   *items;       /* owned: PalangLspCompletionItem */
-  char         *typed;       /* owned: casefolded; what the scores are for */
+  char         *typed;       /* owned: what the scores are for, as typed */
   gboolean      incomplete;  /* the server finds more as more is typed */
   GCancellable *asking;      /* owned, nullable: a request asking again */
 } Results;
@@ -124,14 +124,11 @@ rescore (Results *results)
   g_list_store_splice (results->items, 0, all->len, all->pdata, all->len);
 }
 
-/* Returns: (transfer full): what was typed of the word being completed,
- * casefolded for the fuzzy matcher. */
+/* Returns: (transfer full): what was typed of the word being completed. */
 static char *
 dup_typed (GtkSourceCompletionContext *context)
 {
-  g_autofree char *word = gtk_source_completion_context_get_word (context);
-
-  return g_utf8_casefold (word, -1);
+  return gtk_source_completion_context_get_word (context);
 }
 
 /* Returns: (transfer full): the model to show for @items (the server's
@@ -503,7 +500,8 @@ palang_lsp_completion_provider_display (GtkSourceCompletionProvider *provider,
       {
         const char *label = palang_lsp_completion_item_get_label (item);
         g_autofree char *typed = dup_typed (context);
-        PangoAttrList *bold = gtk_source_completion_fuzzy_highlight (label, typed);
+        g_autofree char *casefold_typed = g_utf8_casefold (typed, -1);
+        PangoAttrList *bold = gtk_source_completion_fuzzy_highlight (label, casefold_typed);
 
         gtk_source_completion_cell_set_text_with_attributes (cell, label, bold);
         g_clear_pointer (&bold, pango_attr_list_unref);

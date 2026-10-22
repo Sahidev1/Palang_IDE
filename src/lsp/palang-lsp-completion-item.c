@@ -41,6 +41,7 @@ struct _PalangLspCompletionItem
   guint     edit_character;
   GVariant *additional_edits;  /* owned, nullable */
   guint     score;             /* of the last match (), G_MAXUINT: no match */
+  gboolean  exact_prefix;      /* the last match ()'s text starts it, case too */
 };
 
 /* The interface has no required functions; G_IMPLEMENT_INTERFACE with
@@ -289,9 +290,17 @@ palang_lsp_completion_item_apply_resolved (PalangLspCompletionItem *self,
 
 gboolean
 palang_lsp_completion_item_match (PalangLspCompletionItem *self,
-                                  const char              *casefold_typed)
+                                  const char              *typed)
 {
+  g_autofree char *casefold_typed = NULL;
+
   g_return_val_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (self), FALSE);
+  g_return_val_if_fail (typed != NULL, FALSE);
+
+  /* The matcher wants the typed text casefolded (case ignored); with the
+   * case as typed, compare () puts entries starting with it first. */
+  casefold_typed = g_utf8_casefold (typed, -1);
+  self->exact_prefix = g_str_has_prefix (self->filter_text, typed);
 
   /* GtkSourceView's fuzzy matcher: the typed letters in order, not
    * necessarily next to each other ("gws" matches "gtk_widget_show");
@@ -319,6 +328,11 @@ palang_lsp_completion_item_compare (PalangLspCompletionItem *a,
   g_return_val_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (a), 0);
   g_return_val_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (b), 0);
 
+  /* An entry starting with exactly what was typed comes first: the
+   * matcher's score favours lowercase ("PRIx8" scores better than
+   * "PRIX8" for "PRIX8"), and a real prefix beats a scattered match. */
+  if (a->exact_prefix != b->exact_prefix)
+    return a->exact_prefix ? -1 : 1;
   if (a->score != b->score)
     return a->score < b->score ? -1 : 1;
 

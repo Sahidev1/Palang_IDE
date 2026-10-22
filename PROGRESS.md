@@ -4,6 +4,118 @@ Newest phase at the top. See [PLAN.md](PLAN.md) for the roadmap.
 
 ---
 
+## Phase 2c — Hover, completion, Problems page ✅ (2026-10-22)
+
+Resting the pointer on a name shows what its language server says about
+it; a completion list opens while typing (with snippets and a Details
+pane for documentation); a Problems page lists every error and warning
+of the open files. This ends Phase 2 (2a, 2b, 2c).
+
+### What was built (one commit per step)
+| Step | Commit | What |
+|---|---|---|
+| 2b fixes | `774566f` | From sahi's 2b manual tests: palette hover selection (one click per row instead of `single-click-activate`), servers given by full path get their folder on PATH (nvm), first-line toasts; `data/style.css` |
+| — | `c4739df` | Stop tracking clangd's `.cache/` |
+| 2c.1 | `1c505d9` | Hover: the server's text under the diagnostics; Markdown → Pango markup (`palang-lsp-markdown.c`); shared `send_position_request ()` |
+| 2c.2 | `9ff05d2`, `c2edd84` | Completion: `PalangLspCompletionProvider` + `PalangLspCompletionItem`, fuzzy filtering, re-asking incomplete lists, textEdit and extra edits in one undo step; sahi's Enter rule (option C) |
+| — | `3fdc9be` | Terminal test prints the screen when its pwd check fails |
+| 2c.3 | `75216fa` | Snippets (own LSP snippet parser), Details pane with `completionItem/resolve` |
+| 2c.4 | `37b2e22` | Problems page (`PalangLspProblem`, `get_problems ()`, `PalangLspProblemsPanel`, Ctrl+Shift+M) |
+| 2c.5 | this commit | End of phase, plus: exact-case entries first, "Show Completions" (Ctrl+Space), one-line problem messages |
+
+### Verification
+- **Tests:** 14 test programs, 136 test cases, plus the desktop-file check
+  (Phase 2b: 116 cases). `test-lsp` now runs under xvfb-run (it creates
+  editor views) and has 42 cases: Markdown samples shaped like the three
+  servers' real answers, snippet parsing, completion items (fields,
+  matching and order, insertion with undo, snippets), hover in every
+  answer form, completion requests and resolve, the problems list and
+  panel. The fake server learned `--hover KIND`, `--complete`, `--slow`.
+  The LSP tests passed 5 repeated runs after 2c.1; the full suite 20 of
+  21 runs after 2c.2 (the one failure: the terminal test, see open items).
+- **Real app** on Xvfb with clangd, pylsp and typescript-language-server
+  (screenshots): hover text formatted for all three; completion after
+  `.` (struct fields), while typing (`printf` with clangd re-asking 3
+  times for 6 letters), `xs.ma` → `map` first; the Enter rule; the
+  `printf(…)` snippet with Tab; "mit" + Tab stays a tab; the Details pane
+  with typescript's documentation; `PRIX8` adding `#include` with one
+  undo; the Problems page (sorting, click → right line and column, list
+  following edits).
+- **valgrind** (release build, clangd, completion with a snippet, Problems
+  page): no invalid reads or writes; 29 definite leaks: fontconfig (26,
+  two through Pango's font measuring for `tab-width`), GIO's module
+  loading (1), GLib's load-time setup (1), and 32 bytes inside GtkSourceView's own
+  gutter drawing (a list it never hands out); "conditional jump" reports
+  only in generated code (Mesa) and librsvg.
+
+### Bugs found and fixed on the way
+- **Palette: Down at the bottom jumped back** with the pointer on the list
+  (sahi's 2b manual test): `single-click-activate` also selects the row
+  under the pointer.
+- **A use-after-free from 2b in `add_diagnostic ()`**, found by ASan once
+  2c.4 copied the message: `g_variant_lookup ()` turns a GVariant built in
+  memory into bytes and frees the old pieces, so earlier string pointers
+  dangle. Only tests build such variants; real server messages arrive as
+  bytes. CLAUDE.md gotcha 19.
+- **Clicking a problem went one line too high** (0- vs 1-based lines).
+- **Completion rows kept the bold letters of what was typed before**: rows
+  that stay in the list aren't redrawn; `rescore ()` now re-adds the items.
+- **GtkSourceView traps** (CLAUDE.md gotchas 16–18): its completion takes
+  Enter/Up/Down first (our key controller sits on the view's parent);
+  snippets move on with Tab only with `enable-snippets`, which also turns
+  on its license snippets (library emptied); its Details cell doesn't wrap
+  and an empty or too-wide pane isn't shown.
+- **typescript's details made the popup as wide as the window**: cut at 40
+  characters after the label (the Details pane shows all).
+- **`PRIX8` gave `PRIx8`**: the matcher's score favours lowercase; entries
+  starting with exactly what was typed now come first.
+- **Problem messages showed ⏎ symbols** in single-line mode; line breaks
+  are now spaces.
+
+### Changes to the plan
+- **2c steps decided with sahi** (docs/plan/phase-2.md): hover, completion
+  core, snippets + Details, Problems page, end of phase. "Go back"
+  (Alt+Left) left open.
+- **Enter rule** (sahi, option C): Enter after a word that already is the
+  first entry starts a new line; Tab still takes the entry.
+- **JavaScript server from the desktop menu** (2b manual test): option A,
+  a full path in `javascript-server`; the toast's Details say how.
+- **Ctrl+Q with a dialog open** closes the dialog (libadwaita): kept, as
+  sahi decided.
+- **Fuzzy matching in `lsp/`** uses GtkSourceView's matcher, not the
+  palette's (dependency rule).
+- **Completion answers that arrive after more typing are kept** (filtered),
+  unlike definition and hover answers.
+- **Added beyond the plan:** "Show Completions" (Ctrl+Space; GtkSourceView 5
+  has no key for it).
+
+### Open items
+- **Ctrl+Space after the list was closed** (by Escape or moving the
+  cursor) shows nothing on the virtual display the first time; a second
+  request (key or palette) shows it. The action runs, the server answers
+  and GtkSourceView gets 86 entries, but doesn't show its popup; reading
+  its code didn't find why. Manual test asks sahi to check the desktop.
+- **The terminal test failed once in 21 runs** (`pwd` output not found);
+  it now prints the screen when that happens.
+- **"Go back"** (Alt+Left after a jump): not done.
+- **Problems list covers open files only** (servers report on those).
+- **clangd adds `<cinttypes>` (the C++ name) in a `.c` file** when
+  completing `PRIX8`; Palang sends the language "c"; clangd's choice.
+- From earlier: gutter icons are grey, license, icon, Follow System on
+  MATE; the hover and completion popups draw a black box on Xvfb (no
+  compositor), fine on sahi's desktop for hover.
+
+### Where to start reading
+1. `docs/04-how-phase-2c-works.md`.
+2. `src/lsp/palang-lsp-completion-provider.c` (top comment), then
+   `palang-lsp-completion-item.c`.
+
+### Next
+sahi runs MANUAL_TESTS.md, Phase 2c. Then Phase 3 (AI autocomplete) or
+Phase 4 (math symbols): the order is open decision 5 (PLAN.md §5).
+
+---
+
 ## Phase 2b — Language servers: sync, diagnostics, go to definition ✅ (2026-10-21)
 
 Palang now starts a language server for C/C++ (clangd), Python (pylsp)

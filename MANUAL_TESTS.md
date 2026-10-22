@@ -228,6 +228,63 @@ project, e.g. `/tmp/lsp-test/`.
       closes within about two seconds, and `pgrep -a 'clangd|pylsp|typescript'`
       in another terminal shows no servers left.
 
+## Phase 2c
+
+Hover, completion and the Problems page. Run Palang with
+`ninja -C build run`, open the project folder (Ctrl+Shift+O), and for
+Python and JavaScript use small files in a scratch folder as in Phase 2b
+(JavaScript: start Palang from a terminal, or set the full path as the
+toast's Details say).
+
+### 1. Hover
+- [ ] In `src/main.c`, rest the pointer on `palang_application_new`: a
+      popup with a bold "function palang_application_new", the header it
+      comes from, and the signature in a monospace font.
+- [ ] In a `.py` file with `import json`, rest it on `json`: the
+      warning ('json' imported but unused) on top, a line, then the
+      module's documentation, which scrolls when long.
+
+### 2. Completion
+- [ ] Inside `main` in `src/main.c`, type `g_appl`: a list of
+      `g_application_…` entries opens by itself, with their return type
+      on the right and the typed letters in bold. Down/Up move, Enter
+      inserts; one Ctrl+Z takes it back.
+- [ ] In a `.js` file, `const xs = [1];` then on the next line `xs.ma`:
+      `map` comes first. In a `.py` file, `import os` then `os.pa`:
+      `path` and `pardir` are there.
+- [ ] Type `PRI` in a C file, press Escape (the list closes), then
+      Ctrl+Space: does the list open at once, or only on the second
+      Ctrl+Space? (On the virtual display only the second worked: see
+      PROGRESS.md, Phase 2c, open items. On some desktops Ctrl+Space
+      switches the input method instead: write down what happens.)
+- [ ] Type `PRIX` then `8`: `PRIX8` is above `PRIx8` (the exact case
+      comes first).
+- [ ] Type a whole `return` and press Enter: a new line, not a
+      completion. `s.b` (with a struct `s` that has a field `beta`) +
+      Enter still inserts `beta`.
+
+### 3. Snippets and details
+- [ ] In a C file with `#include <stdio.h>`, type `prin` and press Tab:
+      `printf(…)` with the argument selected. Type `42`, press Tab: the
+      cursor jumps past the `)`.
+- [ ] Type `mit` and press Tab (with no list open, e.g. after Escape):
+      just a tab or spaces, no license text.
+- [ ] With a list open, click **Details**: a pane with the signature and
+      documentation (in `.js`, after `xs.ma`, it appears after a moment).
+      Does it sit well next to the list (no big overlap)? It stays open
+      for the next lists.
+- [ ] In a C file *without* `#include <inttypes.h>`, type `PRIX8` and
+      pick the entry marked •: `#include <inttypes.h>` appears at the
+      top too; one Ctrl+Z removes both.
+
+### 4. Problems page
+- [ ] Open a `.c` and a `.py` file with errors, press Ctrl+Shift+M: the
+      Problems page lists them (icons, message, "clang · file:line"),
+      sorted by file.
+- [ ] Click a row: its file opens with the cursor at the problem. Fix
+      the error: its row goes away. Close the tab: its rows go away.
+- [ ] Ctrl+Shift+M also works while the terminal has the focus.
+
 ## Results notes
 
 
