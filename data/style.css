@@ -18,3 +18,50 @@
 .navigation-sidebar.palang-problems-list > row > box {
   padding: 0 8px;
 }
+
+/* The main window's frame: a thin line around the edge, a band in the
+ * header bar's color, and a second thin line inside it. This is the frame
+ * libadwaita draws when there is no compositor (window.solid-csd, e.g. on
+ * a virtual display); sahi liked it, so we draw it on composited desktops
+ * too ("csd" = the window draws its own decorations), together with
+ * libadwaita's drop shadow and with square corners. Copied from
+ * libadwaita 1.5's base.css: the first five shadows are its window.csd
+ * shadow, the three "inset" ones are its window.solid-csd frame. */
+window.palang-window.csd {
+  padding: 5px;
+  border-radius: 0;
+  outline: none;
+  box-shadow: 0 1px 3px 3px transparent,
+              0 2px 8px 2px rgba(0, 0, 0, 0.13),
+              0 3px 20px 10px rgba(0, 0, 0, 0.09),
+              0 6px 32px 16px rgba(0, 0, 0, 0.04),
+              0 0 0 1px rgba(0, 0, 0, 0.05),
+              inset 0 0 0 5px alpha(currentColor, 0.15),
+              inset 0 0 0 4px @headerbar_bg_color,
+              inset 0 0 0 1px alpha(currentColor, 0.15);
+}
+
+/* An inactive window: libadwaita's lighter shadow and backdrop color. */
+window.palang-window.csd:backdrop {
+  box-shadow: 0 1px 3px 3px rgba(0, 0, 0, 0.09),
+              0 2px 14px 5px rgba(0, 0, 0, 0.05),
+              0 4px 28px 12px rgba(0, 0, 0, 0.03),
+              0 6px 32px 16px transparent,
+              0 0 0 1px rgba(0, 0, 0, 0.02),
+              inset 0 0 0 5px alpha(currentColor, 0.15),
+              inset 0 0 0 4px @headerbar_backdrop_color,
+              inset 0 0 0 1px alpha(currentColor, 0.15);
+}
+
+/* Maximized, full screen or snapped to a screen edge: no frame, as
+ * libadwaita does (it would only waste space at the screen's edges). */
+window.palang-window.csd.maximized,
+window.palang-window.csd.fullscreen,
+window.palang-window.csd.tiled,
+window.palang-window.csd.tiled-top,
+window.palang-window.csd.tiled-left,
+window.palang-window.csd.tiled-right,
+window.palang-window.csd.tiled-bottom {
+  padding: 0;
+  box-shadow: none;
+}

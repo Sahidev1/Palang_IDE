@@ -76,6 +76,9 @@
     <property name="title">Palang</property>
     <property name="default-width">1000</property>
     <property name="default-height">700</property>
+    <style>
+      <class name="palang-window"/>
+    </style>
     <property name="content">
       <!-- Sidebar (folder tree) on the left, tabs on the right. Each side
            has its own header bar, the usual libadwaita pattern. -->
