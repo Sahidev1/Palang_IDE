@@ -61,6 +61,22 @@ shows_text (PalangTerminal *terminal, gpointer text)
   return screen != NULL && strstr (screen, text) != NULL;
 }
 
+/* Fails, printing the whole screen, unless the terminal shows @text. The
+ * screen tells what went wrong when this fails only now and then. */
+static void
+assert_shows_text (PalangTerminal *terminal,
+                   const char     *text)
+{
+  g_autofree char *screen = NULL;
+
+  if (shows_text (terminal, (gpointer) text))
+    return;
+
+  screen = vte_terminal_get_text_format (palang_terminal_get_vte (terminal), VTE_FORMAT_TEXT);
+  g_printerr ("Terminal text:\n%s\n", screen);
+  g_error ("The terminal doesn't show “%s”", text);
+}
+
 static void
 type_command (PalangTerminal *terminal,
               const char     *command)
@@ -124,7 +140,7 @@ test_directory_and_environment (Fixture *fixture, gconstpointer data)
 
   type_command (fixture->terminal, "pwd; echo value=$PALANG_TEST_VALUE");
   wait_until (fixture->terminal, shows_text, "value=fortytwo");
-  g_assert_true (shows_text (fixture->terminal, expected_pwd));
+  assert_shows_text (fixture->terminal, expected_pwd);
 }
 
 /* When the shell exits, the terminal says so; starting again works. */
