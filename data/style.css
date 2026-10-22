@@ -84,14 +84,27 @@ radio {
   border-radius: 9999px;
 }
 
-/* Command palette and Problems rows: libadwaita pads the row
+/* Command palette, Problems and file tree rows: libadwaita pads the row
  * ("navigation-sidebar" gives it 8px left and right). Move that padding
  * into the row's contents, so the click handler on the contents
- * (on_row_clicked in palang-palette.c and palang-lsp-problems-panel.c)
+ * (on_row_clicked in palang-palette.c and palang-lsp-problems-panel.c,
+ * on_row_pressed in palang-file-tree.c)
  * covers the whole row. Two classes, so this wins over libadwaita's rule. */
 .navigation-sidebar.palang-palette-list > row,
-.navigation-sidebar.palang-problems-list > row {
+.navigation-sidebar.palang-problems-list > row,
+.navigation-sidebar.palang-file-tree-list > row {
   padding: 0;
+}
+
+/* The file tree keeps the left padding before the expander arrow, and gets
+ * the right padding inside the row's box (on_row_pressed in
+ * palang-file-tree.c), so clicks right of the name count too. */
+.navigation-sidebar.palang-file-tree-list > row {
+  padding-left: 8px;
+}
+
+.palang-file-tree-row {
+  padding-right: 8px;
 }
 
 .navigation-sidebar.palang-palette-list > row > box,

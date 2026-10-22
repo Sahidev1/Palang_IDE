@@ -214,8 +214,15 @@ on_row_expanded (GtkTreeListRow *row,
   update_row_icon (row, icon);
 }
 
+static void on_row_pressed (GtkGestureClick *click,
+                            int              n_press,
+                            double           x,
+                            double           y,
+                            GtkListItem     *list_item);
+
 /* A row's widgets: expander arrow → [icon  name]. Created once per visible
- * row slot and reused as the list scrolls. */
+ * row slot and reused as the list scrolls. The click gesture on [icon name]
+ * opens the entry with one click (see on_row_pressed ()). */
 static void
 on_setup_row (GtkSignalListItemFactory *factory,
               GtkListItem              *list_item,
@@ -225,9 +232,21 @@ on_setup_row (GtkSignalListItemFactory *factory,
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
   GtkWidget *icon = gtk_image_new ();
   GtkWidget *label = gtk_label_new (NULL);
+  GtkGesture *click = gtk_gesture_click_new ();
 
   gtk_label_set_xalign (GTK_LABEL (label), 0);
   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+
+  /* The list item outlives its row widgets (and so this gesture), so it
+   * is safe to pass as user data. */
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), GDK_BUTTON_PRIMARY);
+  g_signal_connect (click, "pressed", G_CALLBACK (on_row_pressed), list_item);
+  gtk_widget_add_controller (box, GTK_EVENT_CONTROLLER (click));
+
+  /* Fill the row, so a click anywhere right of the arrow hits the box
+   * (data/style.css moves the row's padding into the box, too). */
+  gtk_widget_set_hexpand (box, TRUE);
+  gtk_widget_add_css_class (box, "palang-file-tree-row");
 
   gtk_box_append (GTK_BOX (box), icon);
   gtk_box_append (GTK_BOX (box), label);
@@ -271,7 +290,7 @@ on_unbind_row (GtkSignalListItemFactory *factory,
   g_signal_handlers_disconnect_by_func (row, on_row_expanded, icon);
 }
 
-/* A row was clicked (or Enter pressed on it). */
+/* A row was activated: Enter pressed on it, or clicked (on_row_pressed). */
 static void
 on_activate (GtkListView    *list_view,
              guint           position,
@@ -285,6 +304,39 @@ on_activate (GtkListView    *list_view,
     gtk_tree_list_row_set_expanded (row, !gtk_tree_list_row_get_expanded (row));
   else
     g_signal_emit (self, signals[SIGNAL_FILE_ACTIVATED], 0, file_for_info (info));
+}
+
+/* One click on a row opens its file or folds its folder open or closed.
+ *
+ * GtkListView's own "single-click-activate" would do this too, but it also
+ * selects whichever row the pointer passes over, and that row stays
+ * highlighted after the pointer leaves the sidebar. So the list opens
+ * entries only on double click or Enter (on_activate ()), and this gesture
+ * on each row handles the single click.
+ *
+ * Claiming the click keeps it from the list's own handling: otherwise a
+ * double click would also reach on_activate () and fold a folder straight
+ * back. So this selects and focuses the row itself, as the list would. */
+static void
+on_row_pressed (GtkGestureClick *click,
+                int              n_press,
+                double           x,
+                double           y,
+                GtkListItem     *list_item)
+{
+  GtkWidget *box = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (click));
+  PalangFileTree *self = PALANG_FILE_TREE (gtk_widget_get_ancestor (box, PALANG_TYPE_FILE_TREE));
+  guint position = gtk_list_item_get_position (list_item);
+
+  gtk_gesture_set_state (GTK_GESTURE (click), GTK_EVENT_SEQUENCE_CLAIMED);
+
+  /* The second press of a double click: the first one did the work. */
+  if (n_press != 1)
+    return;
+
+  gtk_list_view_scroll_to (self->list_view, position,
+                           GTK_LIST_SCROLL_FOCUS | GTK_LIST_SCROLL_SELECT, NULL);
+  on_activate (self->list_view, position, self);
 }
 
 /* ---- Public API --------------------------------------------------------- */

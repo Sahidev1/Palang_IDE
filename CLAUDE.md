@@ -113,6 +113,11 @@ xdotool key ctrl+q                                   # quit; check exit code 0
   (happened 2026-10-22). Ask them to close it, or run under
   `dbus-run-session --` (the window then takes ~25 s to appear while the
   portals time out).
+- **On sahi's real display, touch only Palang's own windows**, found by its
+  PID (`xdotool search --pid $pid`), never by a name pattern: a cleanup
+  loop over windows named "Save" once closed the screensaver's windows and
+  another app's dialog (2026-10-22). No `windowclose`/`windowkill` on
+  anything else, and no screenshots of other apps.
 
 ## Status
 
@@ -206,6 +211,11 @@ the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
     into bytes and frees the old pieces. Call `g_variant_get_data ()`
     before taking pointers, or copy strings at once
     (`palang-lsp-diagnostics.c`, found by ASan in 2c.4).
+20. **`GtkListView:single-click-activate` also selects the row under the
+    pointer**, and that selection stays after the pointer leaves. For
+    one-click lists, put a `GtkGestureClick` on each row's contents instead
+    (palette: `on_row_clicked`; file tree: `on_row_pressed`, which claims
+    the click so a double click doesn't activate twice).
 
 ## Memory
 

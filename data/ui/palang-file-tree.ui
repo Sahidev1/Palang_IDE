@@ -38,8 +38,9 @@
                 <property name="hscrollbar-policy">never</property>
                 <property name="child">
                   <object class="GtkListView" id="list_view">
-                    <!-- One click opens a file, like most IDEs. -->
-                    <property name="single-click-activate">true</property>
+                    <!-- One click opens a file, like most IDEs: done by a
+                         click gesture on each row (on_row_pressed), not by
+                         single-click-activate, which selects rows on hover. -->
                     <signal name="activate" handler="on_activate"/>
                     <property name="factory">
                       <object class="GtkSignalListItemFactory">
@@ -50,6 +51,7 @@
                     </property>
                     <style>
                       <class name="navigation-sidebar"/>
+                      <class name="palang-file-tree-list"/>  <!-- see style.css -->
                     </style>
                   </object>
                 </property>
