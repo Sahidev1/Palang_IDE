@@ -50,8 +50,8 @@ void              palang_lsp_manager_remove_document (PalangLspManager *self,
                                                       PalangDocument   *document);
 
 /* Sets up @view (showing one of the added documents) for language
- * features: icons in the gutter, messages when the pointer rests on an
- * underlined range. */
+ * features: icons in the gutter, popups when the pointer rests on text,
+ * completion while typing. */
 void              palang_lsp_manager_add_view        (PalangLspManager *self,
                                                       GtkSourceView    *view);
 
@@ -96,6 +96,29 @@ void              palang_lsp_manager_hover_async     (PalangLspManager    *self,
  * has nothing to say there or on error (check @error). */
 char             *palang_lsp_manager_hover_finish    (PalangLspManager  *self,
                                                       GAsyncResult      *result,
+                                                      GError           **error);
+
+/* Asks @document's server what could be typed at @iter
+ * ("textDocument/completion"). @trigger_character: the character just
+ * typed if it is one of the server's trigger characters (like "."), else
+ * 0. Fails like hover_async (). Unlike the other requests, an answer that
+ * arrives after more typing is kept: the caller filters it by what was
+ * typed meanwhile. */
+void              palang_lsp_manager_complete_async  (PalangLspManager    *self,
+                                                      PalangDocument      *document,
+                                                      const GtkTextIter   *iter,
+                                                      gunichar             trigger_character,
+                                                      GCancellable        *cancellable,
+                                                      GAsyncReadyCallback  callback,
+                                                      gpointer             user_data);
+
+/* @is_incomplete: (out) (optional): TRUE if the server would find more
+ * as more is typed (ask again then).
+ * Returns: (transfer full) (nullable): the PalangLspCompletionItems, in
+ * the server's order; NULL on error. */
+GListModel       *palang_lsp_manager_complete_finish (PalangLspManager  *self,
+                                                      GAsyncResult      *result,
+                                                      gboolean          *is_incomplete,
                                                       GError           **error);
 
 /* Stops every server and starts the ones the open documents need. Also

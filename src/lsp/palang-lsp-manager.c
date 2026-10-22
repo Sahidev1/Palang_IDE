@@ -19,6 +19,8 @@
 
 #include <jsonrpc-glib.h>
 
+#include "palang-lsp-completion-item.h"
+#include "palang-lsp-completion-provider.h"
 #include "palang-lsp-diagnostics.h"
 #include "palang-lsp-document.h"
 #include "palang-lsp-hover-provider.h"
@@ -333,7 +335,9 @@ void
 palang_lsp_manager_add_view (PalangLspManager *self,
                              GtkSourceView    *view)
 {
-  g_autoptr (PalangLspHoverProvider) provider = NULL;
+  g_autoptr (PalangLspHoverProvider) hover_provider = NULL;
+  g_autoptr (PalangLspCompletionProvider) completion_provider = NULL;
+  GtkSourceCompletion *completion;
 
   g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
   g_return_if_fail (GTK_SOURCE_IS_VIEW (view));
@@ -341,9 +345,18 @@ palang_lsp_manager_add_view (PalangLspManager *self,
   palang_lsp_diagnostics_setup_view (view);
 
   /* The view's GtkSourceHover keeps its own reference to the provider. */
-  provider = palang_lsp_hover_provider_new (self);
+  hover_provider = palang_lsp_hover_provider_new (self);
   gtk_source_hover_add_provider (gtk_source_view_get_hover (view),
-                                 GTK_SOURCE_HOVER_PROVIDER (provider));
+                                 GTK_SOURCE_HOVER_PROVIDER (hover_provider));
+
+  /* Completion likewise. "select-on-show": the first entry is selected
+   * when the popup opens, so Enter or Tab takes it (as in most editors);
+   * our entries have no icons, so no room is kept for them. */
+  completion = gtk_source_view_get_completion (view);
+  completion_provider = palang_lsp_completion_provider_new (self);
+  gtk_source_completion_add_provider (completion,
+                                      GTK_SOURCE_COMPLETION_PROVIDER (completion_provider));
+  g_object_set (completion, "select-on-show", TRUE, "show-icons", FALSE, NULL);
 }
 
 PalangLspDocument *
@@ -395,7 +408,8 @@ client_supports (PalangLspClient *client,
   return !g_variant_is_of_type (value, G_VARIANT_TYPE_BOOLEAN) || g_variant_get_boolean (value);
 }
 
-/* Sends the request @method about the position @iter in @document;
+/* Sends the request @method about the position @iter in @document, with
+ * the members of @extra_params (nullable, a{sv}) added to its params;
  * @on_replied gets the reply with @task (transfer full) as its user data.
  * Fails @task at once if no server has the document open
  * (G_IO_ERROR_NOT_CONNECTED) or the server doesn't offer @capability
@@ -406,6 +420,7 @@ send_position_request (PalangLspManager    *self,
                        const GtkTextIter   *iter,
                        const char          *method,
                        const char          *capability,
+                       GVariant            *extra_params,
                        GTask               *task,
                        GAsyncReadyCallback  on_replied)
 {
@@ -446,6 +461,24 @@ send_position_request (PalangLspManager    *self,
       "line", JSONRPC_MESSAGE_PUT_INT64 (line),
       "character", JSONRPC_MESSAGE_PUT_INT64 (character),
     "}");
+
+  if (extra_params != NULL)
+    {
+      g_autoptr (GVariantDict) dict = g_variant_dict_new (params);
+      GVariantIter members;
+      const char *key;
+      GVariant *value;
+
+      /* g_variant_iter_loop () frees the previous key and value on each
+       * turn, and the last ones when it returns FALSE. */
+      g_variant_iter_init (&members, extra_params);
+      while (g_variant_iter_loop (&members, "{&sv}", &key, &value))
+        g_variant_dict_insert_value (dict, key, value);
+
+      g_clear_pointer (&params, g_variant_unref);
+      params = g_variant_ref_sink (g_variant_dict_end (dict));
+    }
+
   palang_lsp_client_call_async (client, method, params, g_task_get_cancellable (task),
                                 on_replied, task);
 }
@@ -611,7 +644,7 @@ palang_lsp_manager_find_definition_async (PalangLspManager    *self,
 
   task = g_task_new (self, cancellable, callback, user_data);
   send_position_request (self, document, iter, "textDocument/definition", "definitionProvider",
-                         task, on_definition_replied);
+                         NULL, task, on_definition_replied);
 }
 
 gboolean
@@ -754,7 +787,7 @@ palang_lsp_manager_hover_async (PalangLspManager    *self,
 
   task = g_task_new (self, cancellable, callback, user_data);
   send_position_request (self, document, iter, "textDocument/hover", "hoverProvider",
-                         task, on_hover_replied);
+                         NULL, task, on_hover_replied);
 }
 
 char *
@@ -765,6 +798,130 @@ palang_lsp_manager_hover_finish (PalangLspManager  *self,
   g_return_val_if_fail (g_task_is_valid (result, self), NULL);
 
   return g_task_propagate_pointer (G_TASK (result), error);
+}
+
+/* ---- Completion --------------------------------------------------------- */
+
+/* The result handed to _finish (). */
+typedef struct {
+  GListStore *items;       /* owned: PalangLspCompletionItem */
+  gboolean    incomplete;  /* the server would find more as you type */
+} CompletionResult;
+
+static void
+completion_result_free (CompletionResult *result)
+{
+  g_clear_object (&result->items);
+  g_free (result);
+}
+
+static void
+on_completion_replied (GObject      *source,
+                       GAsyncResult *result,
+                       gpointer      user_data)
+{
+  g_autoptr (GTask) task = user_data;
+  g_autoptr (GVariant) reply = NULL;
+  g_autoptr (GVariant) items = NULL;
+  g_autoptr (GError) error = NULL;
+  CompletionResult *found;
+
+  reply = palang_lsp_client_call_finish (PALANG_LSP_CLIENT (source), result, &error);
+  if (error != NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  /* No return_if_stale () here: the user usually types on while the
+   * server thinks, and the list is still right for the word's start; the
+   * provider filters it by what was typed meanwhile. */
+
+  found = g_new0 (CompletionResult, 1);
+  found->items = g_list_store_new (PALANG_TYPE_LSP_COMPLETION_ITEM);
+
+  /* The answer is an array of CompletionItems, a CompletionList
+   * {"isIncomplete": …, "items": [...]}, or null. */
+  if (reply != NULL && g_variant_is_of_type (reply, G_VARIANT_TYPE ("av")))
+    items = g_variant_ref (reply);
+  else if (reply != NULL && g_variant_is_of_type (reply, G_VARIANT_TYPE_VARDICT))
+    {
+      g_variant_lookup (reply, "isIncomplete", "b", &found->incomplete);
+      items = g_variant_lookup_value (reply, "items", G_VARIANT_TYPE ("av"));
+    }
+
+  for (gsize i = 0; items != NULL && i < g_variant_n_children (items); i++)
+    {
+      g_autoptr (GVariant) boxed = g_variant_get_child_value (items, i);
+      g_autoptr (GVariant) item = g_variant_get_variant (boxed);
+      g_autoptr (PalangLspCompletionItem) entry = palang_lsp_completion_item_new (item);
+
+      if (entry != NULL)
+        g_list_store_append (found->items, entry);
+    }
+
+  g_task_return_pointer (task, found, (GDestroyNotify) completion_result_free);
+}
+
+void
+palang_lsp_manager_complete_async (PalangLspManager    *self,
+                                   PalangDocument      *document,
+                                   const GtkTextIter   *iter,
+                                   gunichar             trigger_character,
+                                   GCancellable        *cancellable,
+                                   GAsyncReadyCallback  callback,
+                                   gpointer             user_data)
+{
+  g_autoptr (GVariant) extra_params = NULL;  /* {"context": …} */
+  char trigger[7] = { 0 };  /* one UTF-8 character and a NUL */
+  GTask *task;
+
+  g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
+  g_return_if_fail (PALANG_IS_DOCUMENT (document));
+  g_return_if_fail (iter != NULL);
+
+  /* Tell the server why we ask: triggerKind 1 = typing or Ctrl+Space,
+   * 2 = after one of its trigger characters (like "."). */
+  if (trigger_character != 0)
+    {
+      g_unichar_to_utf8 (trigger_character, trigger);
+      extra_params = JSONRPC_MESSAGE_NEW (
+        "context", "{",
+          "triggerKind", JSONRPC_MESSAGE_PUT_INT64 (2),
+          "triggerCharacter", JSONRPC_MESSAGE_PUT_STRING (trigger),
+        "}");
+    }
+  else
+    extra_params = JSONRPC_MESSAGE_NEW (
+      "context", "{",
+        "triggerKind", JSONRPC_MESSAGE_PUT_INT64 (1),
+      "}");
+
+  task = g_task_new (self, cancellable, callback, user_data);
+  send_position_request (self, document, iter, "textDocument/completion", "completionProvider",
+                         extra_params, task, on_completion_replied);
+}
+
+GListModel *
+palang_lsp_manager_complete_finish (PalangLspManager  *self,
+                                    GAsyncResult      *result,
+                                    gboolean          *is_incomplete,
+                                    GError           **error)
+{
+  CompletionResult *found;
+  GListModel *items;
+
+  g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+
+  found = g_task_propagate_pointer (G_TASK (result), error);
+  if (found == NULL)
+    return NULL;
+
+  items = G_LIST_MODEL (g_steal_pointer (&found->items));
+  if (is_incomplete != NULL)
+    *is_incomplete = found->incomplete;
+  completion_result_free (found);
+  return items;
 }
 
 /* ---- Folder ------------------------------------------------------------- */

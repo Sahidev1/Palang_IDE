@@ -7,7 +7,8 @@
  *   fake-lsp-server [--log FILE] [--crash-after-initialized] [--ignore-shutdown]
  *                   [--refuse-initialize] [--full-sync] [--crash-on-change]
  *                   [--diagnose] [--definition LINE:CHARACTER]
- *                   [--definition-link] [--hover KIND] [--slow]
+ *                   [--definition-link] [--hover KIND] [--complete]
+ *                   [--slow]
  *
  *   --log FILE                 append every message received to FILE, one
  *                              line each: the method, a space, the params
@@ -38,10 +39,19 @@
  *                              as MarkupContent), "plaintext" ("**not bold**
  *                              at LINE:CHAR") or "legacy" (an array of
  *                              MarkedStrings), or "none" (null: nothing)
+ *   --complete                 offer completion (trigger character ".")
+ *                              and answer textDocument/completion with an
+ *                              incomplete list of two items: " alpha"
+ *                              (filterText "alpha", detail "int", a
+ *                              textEdit replacing the character before the
+ *                              position) and "beta" (sorted first, with an
+ *                              additionalTextEdit adding "#include <b.h>\n"
+ *                              at the top); without it no completion
  *   --slow                     answer definition and hover after 300 ms
  *
  * Requests it answers: "initialize", "shutdown", "textDocument/definition"
- * (see --definition), "textDocument/hover" (see --hover), "fake/echo", which replies with its params, and
+ * (see --definition), "textDocument/hover" (see --hover),
+ * "textDocument/completion" (see --complete), "fake/echo", which replies with its params, and
  * "fake/getenv" ({"name": …}), which replies with that environment
  * variable's value (a string, or null if it isn't set).
  */
@@ -66,6 +76,7 @@ static gboolean diagnose;
 static char *definition;  /* "LINE:CHAR" */
 static gboolean definition_link;
 static char *hover;  /* "markdown", "plaintext", "legacy" or "none" */
+static gboolean complete;
 static gboolean slow;
 static GMainLoop *main_loop;
 
@@ -165,6 +176,45 @@ build_hover (gint64 line,
   return NULL;
 }
 
+/* Returns: (transfer full): the answer to a completion request at @line,
+ * @character, per --complete. */
+static GVariant *
+build_completion (gint64 line,
+                  gint64 character)
+{
+  return JSONRPC_MESSAGE_NEW (
+    "isIncomplete", JSONRPC_MESSAGE_PUT_BOOLEAN (TRUE),
+    "items", "[",
+      "{",
+        "label", JSONRPC_MESSAGE_PUT_STRING (" alpha"),
+        "filterText", JSONRPC_MESSAGE_PUT_STRING ("alpha"),
+        "sortText", JSONRPC_MESSAGE_PUT_STRING ("2"),
+        "kind", JSONRPC_MESSAGE_PUT_INT64 (5),
+        "detail", JSONRPC_MESSAGE_PUT_STRING ("int"),
+        "textEdit", "{",
+          "newText", JSONRPC_MESSAGE_PUT_STRING ("alpha"),
+          "range", "{",
+            "start", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (line), "character", JSONRPC_MESSAGE_PUT_INT64 (MAX (character - 1, 0)), "}",
+            "end", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (line), "character", JSONRPC_MESSAGE_PUT_INT64 (character), "}",
+          "}",
+        "}",
+      "}",
+      "{",
+        "label", JSONRPC_MESSAGE_PUT_STRING ("beta"),
+        "sortText", JSONRPC_MESSAGE_PUT_STRING ("1"),
+        "additionalTextEdits", "[",
+          "{",
+            "newText", JSONRPC_MESSAGE_PUT_STRING ("#include <b.h>\n"),
+            "range", "{",
+              "start", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (0), "character", JSONRPC_MESSAGE_PUT_INT64 (0), "}",
+              "end", "{", "line", JSONRPC_MESSAGE_PUT_INT64 (0), "character", JSONRPC_MESSAGE_PUT_INT64 (0), "}",
+            "}",
+          "}",
+        "]",
+      "}",
+    "]");
+}
+
 /* A reply sent later (--slow). */
 typedef struct {
   JsonrpcClient *rpc;    /* owned */
@@ -211,6 +261,22 @@ on_handle_call (JsonrpcClient *rpc,
           "name", JSONRPC_MESSAGE_PUT_STRING ("fake"),
         "}");
 
+      /* "completionProvider" is an object, or missing when the server
+       * doesn't complete: added afterwards with a GVariantDict. */
+      if (complete)
+        {
+          g_autoptr (GVariant) capabilities = g_variant_lookup_value (reply, "capabilities", NULL);
+          g_autoptr (GVariantDict) dict = g_variant_dict_new (capabilities);
+          g_autoptr (GVariantDict) reply_dict = g_variant_dict_new (reply);
+          g_autoptr (GVariant) options = JSONRPC_MESSAGE_NEW (
+            "triggerCharacters", "[", JSONRPC_MESSAGE_PUT_STRING ("."), "]");
+
+          g_variant_dict_insert_value (dict, "completionProvider", options);
+          g_variant_dict_insert_value (reply_dict, "capabilities", g_variant_dict_end (dict));
+          g_clear_pointer (&reply, g_variant_unref);
+          reply = g_variant_ref_sink (g_variant_dict_end (reply_dict));
+        }
+
       jsonrpc_client_reply_async (rpc, id, reply, NULL, NULL, NULL);
     }
   else if (g_str_equal (method, "shutdown"))
@@ -219,7 +285,8 @@ on_handle_call (JsonrpcClient *rpc,
         jsonrpc_client_reply_async (rpc, id, NULL, NULL, NULL, NULL);
     }
   else if (g_str_equal (method, "textDocument/definition") ||
-           g_str_equal (method, "textDocument/hover"))
+           g_str_equal (method, "textDocument/hover") ||
+           g_str_equal (method, "textDocument/completion"))
     {
       const char *uri = NULL;
       gint64 line = 0, character = 0;
@@ -233,8 +300,10 @@ on_handle_call (JsonrpcClient *rpc,
         "}");
       if (g_str_equal (method, "textDocument/definition"))
         reply = build_definition (uri);
-      else
+      else if (g_str_equal (method, "textDocument/hover"))
         reply = build_hover (line, character);
+      else
+        reply = complete ? build_completion (line, character) : NULL;
 
       if (slow)
         {
@@ -428,6 +497,7 @@ main (int   argc,
     { "definition", 0, 0, G_OPTION_ARG_STRING, &definition, NULL, NULL },
     { "definition-link", 0, 0, G_OPTION_ARG_NONE, &definition_link, NULL, NULL },
     { "hover", 0, 0, G_OPTION_ARG_STRING, &hover, NULL, NULL },
+    { "complete", 0, 0, G_OPTION_ARG_NONE, &complete, NULL, NULL },
     { "slow", 0, 0, G_OPTION_ARG_NONE, &slow, NULL, NULL },
     { NULL }
   };

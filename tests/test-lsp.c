@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "palang-lsp-client.h"
+#include "palang-lsp-completion-item.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
 #include "palang-lsp-markdown.h"
@@ -1492,6 +1493,236 @@ test_hover_stale (Fixture *fixture, gconstpointer data)
   dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
 }
 
+/* ---- Completion ---------------------------------------------------------- */
+
+/* Returns: (transfer full): an item made from @json (a CompletionItem). */
+static PalangLspCompletionItem *
+item_from_json (const char *json)
+{
+  g_autoptr (GError) error = NULL;
+  g_autoptr (JsonNode) node = json_from_string (json, &error);
+  g_autoptr (GVariant) variant = NULL;
+
+  g_assert_no_error (error);
+  /* jsonrpc-glib turns JSON into GVariants this way too. */
+  variant = g_variant_ref_sink (json_gvariant_deserialize (node, NULL, &error));
+  g_assert_no_error (error);
+  return palang_lsp_completion_item_new (variant);
+}
+
+/* What an item shows and inserts, from the forms clangd and
+ * typescript-language-server send. */
+static void
+test_completion_item_fields (void)
+{
+  g_autoptr (PalangLspCompletionItem) clangd = item_from_json (
+    "{\"label\": \" alpha\", \"filterText\": \"alpha\", \"kind\": 5, \"detail\": \"int\","
+    " \"sortText\": \"407d8856alpha\","
+    " \"textEdit\": {\"newText\": \"alpha\", \"range\": {\"start\": {\"line\": 5, \"character\": 4},"
+    "                                              \"end\": {\"line\": 5, \"character\": 6}}}}");
+  g_autoptr (PalangLspCompletionItem) typescript = item_from_json (
+    "{\"label\": \"map\", \"kind\": 2, \"sortText\": \"11\"}");
+  g_autoptr (PalangLspCompletionItem) no_label = item_from_json ("{\"kind\": 2}");
+
+  g_assert_cmpstr (palang_lsp_completion_item_get_label (clangd), ==, "alpha");
+  g_assert_cmpstr (palang_lsp_completion_item_get_filter_text (clangd), ==, "alpha");
+  g_assert_cmpstr (palang_lsp_completion_item_get_detail (clangd), ==, "int");
+  g_assert_cmpstr (palang_lsp_completion_item_get_kind_name (clangd), ==, "Field");
+  g_assert_cmpstr (palang_lsp_completion_item_get_new_text (clangd), ==, "alpha");
+
+  /* Only a label: it is also what is matched and inserted. */
+  g_assert_cmpstr (palang_lsp_completion_item_get_filter_text (typescript), ==, "map");
+  g_assert_cmpstr (palang_lsp_completion_item_get_new_text (typescript), ==, "map");
+  g_assert_cmpstr (palang_lsp_completion_item_get_sort_text (typescript), ==, "11");
+  g_assert_cmpstr (palang_lsp_completion_item_get_kind_name (typescript), ==, "Method");
+  g_assert_null (palang_lsp_completion_item_get_detail (typescript));
+
+  g_assert_null (no_label);
+}
+
+/* Typed letters match in order; closer matches sort first; with nothing
+ * typed, the server's sort text decides. */
+static void
+test_completion_item_matching (void)
+{
+  g_autoptr (PalangLspCompletionItem) long_name = item_from_json (
+    "{\"label\": \"gtk_widget_show\", \"sortText\": \"1\"}");
+  g_autoptr (PalangLspCompletionItem) short_name = item_from_json (
+    "{\"label\": \"gwshow\", \"sortText\": \"2\"}");
+  g_autoptr (PalangLspCompletionItem) other = item_from_json (
+    "{\"label\": \"show\", \"sortText\": \"0\"}");
+  g_autoptr (PalangLspCompletionItem) camel_case = item_from_json (
+    "{\"label\": \"GtkWidget\"}");
+
+  g_assert_true (palang_lsp_completion_item_match (long_name, "gws"));
+  g_assert_true (palang_lsp_completion_item_match (short_name, "gws"));
+  g_assert_false (palang_lsp_completion_item_match (other, "gws"));
+  g_assert_cmpuint (palang_lsp_completion_item_get_score (other), ==, G_MAXUINT);
+  g_assert_cmpint (palang_lsp_completion_item_compare (short_name, long_name), <, 0);
+
+  /* Case is ignored in the item (the caller casefolds what is typed). */
+  g_assert_true (palang_lsp_completion_item_match (camel_case, "gtkw"));
+
+  g_assert_true (palang_lsp_completion_item_match (long_name, ""));
+  g_assert_true (palang_lsp_completion_item_match (short_name, ""));
+  g_assert_cmpint (palang_lsp_completion_item_compare (long_name, short_name), <, 0);
+}
+
+/* Inserting replaces the typed word (from the server's start, if given),
+ * makes the extra edits, and is undone by one undo. */
+static void
+test_completion_item_insert (void)
+{
+  g_autoptr (PalangLspCompletionItem) with_edits = item_from_json (
+    "{\"label\": \"alpha\","
+    " \"textEdit\": {\"newText\": \"alpha\", \"range\": {\"start\": {\"line\": 1, \"character\": 2},"
+    "                                              \"end\": {\"line\": 1, \"character\": 4}}},"
+    " \"additionalTextEdits\": [{\"newText\": \"#include <a.h>\\n\","
+    "                            \"range\": {\"start\": {\"line\": 0, \"character\": 0},"
+    "                                      \"end\": {\"line\": 0, \"character\": 0}}}]}");
+  g_autoptr (PalangLspCompletionItem) plain = item_from_json ("{\"label\": \"map\"}");
+  g_autoptr (GtkTextBuffer) buffer = gtk_text_buffer_new (NULL);
+  g_autofree char *text = NULL;
+  GtkTextIter word_start, cursor, start, end;
+
+  /* "s.al", with the word starting at "l" here and at "a" for the server:
+   * the server's start wins. */
+  gtk_text_buffer_set_text (buffer, "int x;\ns.al", -1);
+  gtk_text_buffer_get_iter_at_line_offset (buffer, &word_start, 1, 3);
+  gtk_text_buffer_get_end_iter (buffer, &cursor);
+  palang_lsp_completion_item_insert (with_edits, buffer, &word_start, &cursor);
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+  g_assert_cmpstr (text, ==, "#include <a.h>\nint x;\ns.alpha");
+  g_clear_pointer (&text, g_free);
+
+  gtk_text_buffer_undo (buffer);
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+  g_assert_cmpstr (text, ==, "int x;\ns.al");
+  g_clear_pointer (&text, g_free);
+
+  /* No textEdit: the word ("ma") is replaced. */
+  gtk_text_buffer_set_text (buffer, "xs.ma", -1);
+  gtk_text_buffer_get_iter_at_offset (buffer, &word_start, 3);
+  gtk_text_buffer_get_end_iter (buffer, &cursor);
+  palang_lsp_completion_item_insert (plain, buffer, &word_start, &cursor);
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+  g_assert_cmpstr (text, ==, "xs.map");
+}
+
+typedef struct {
+  gboolean    done;
+  GListModel *items;
+  gboolean    incomplete;
+  GError     *error;
+} CompletionAnswer;
+
+static void
+on_completion_answered (GObject      *source,
+                        GAsyncResult *result,
+                        gpointer      user_data)
+{
+  CompletionAnswer *answer = user_data;
+
+  answer->items = palang_lsp_manager_complete_finish (PALANG_LSP_MANAGER (source), result,
+                                                      &answer->incomplete, &answer->error);
+  answer->done = TRUE;
+}
+
+/* Asks for completion at @line, @offset (GTK counting) and waits. */
+static void
+complete_at (PalangLspManager *manager,
+             PalangDocument   *document,
+             int               line,
+             int               offset,
+             gunichar          trigger,
+             CompletionAnswer *answer)
+{
+  GtkTextIter iter;
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, line, offset);
+  palang_lsp_manager_complete_async (manager, document, &iter, trigger, NULL,
+                                     on_completion_answered, answer);
+  wait_for_flag (&answer->done, "the completion answer");
+}
+
+static void
+clear_completion_answer (CompletionAnswer *answer)
+{
+  g_clear_object (&answer->items);
+  g_clear_error (&answer->error);
+  answer->done = FALSE;
+}
+
+/* The request: position in UTF-16 units, why we ask ("context"); the
+ * answer: the items in the server's order, and "isIncomplete". */
+static void
+test_completion_request (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, "--complete");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c",
+                                                       "\xf0\x9f\x98\x80 s.a\n");
+  g_autoptr (JsonNode) typed = NULL;
+  g_autoptr (JsonNode) triggered = NULL;
+  g_autoptr (PalangLspCompletionItem) first = NULL;
+  g_autofree char *trigger = NULL;
+  CompletionAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  complete_at (manager, document, 0, 5, 0, &answer);
+  g_assert_no_error (answer.error);
+  g_assert_true (answer.incomplete);
+  g_assert_cmpuint (g_list_model_get_n_items (answer.items), ==, 2);
+  first = g_list_model_get_item (answer.items, 0);
+  g_assert_cmpstr (palang_lsp_completion_item_get_label (first), ==, "alpha");
+
+  typed = get_logged_params (fixture, "textDocument/completion", 0);
+  g_assert_cmpint (get_int (typed, "$.position.character"), ==, 6);  /* 😀 is two units */
+  g_assert_cmpint (get_int (typed, "$.context.triggerKind"), ==, 1);
+
+  clear_completion_answer (&answer);
+  complete_at (manager, document, 0, 4, '.', &answer);
+  g_assert_no_error (answer.error);
+  triggered = get_logged_params (fixture, "textDocument/completion", 1);
+  g_assert_cmpint (get_int (triggered, "$.context.triggerKind"), ==, 2);
+  trigger = dup_string (triggered, "$.context.triggerCharacter");
+  g_assert_cmpstr (trigger, ==, ".");
+
+  clear_completion_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* A server without "completionProvider" isn't asked. */
+static void
+test_completion_not_supported (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "s.a\n");
+  g_autofree char *log = NULL;
+  CompletionAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  complete_at (manager, document, 0, 3, 0, &answer);
+  g_assert_error (answer.error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED);
+  g_assert_null (answer.items);
+
+  log = read_log (fixture);
+  g_assert_null (strstr (log, "textDocument/completion"));
+
+  clear_completion_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -1504,6 +1735,9 @@ main (int   argc,
   g_test_add_func ("/lsp/position/iters", test_position_iters);
   g_test_add_func ("/lsp/markdown/real-servers", test_markdown_real_servers);
   g_test_add_func ("/lsp/markdown/edge-cases", test_markdown_edge_cases);
+  g_test_add_func ("/lsp/completion/item-fields", test_completion_item_fields);
+  g_test_add_func ("/lsp/completion/item-matching", test_completion_item_matching);
+  g_test_add_func ("/lsp/completion/item-insert", test_completion_item_insert);
 
 #define ADD_TEST(path, func) \
   g_test_add (path, Fixture, NULL, fixture_setup, func, fixture_teardown)
@@ -1541,6 +1775,8 @@ main (int   argc,
   ADD_TEST ("/lsp/hover/nothing", test_hover_nothing);
   ADD_TEST ("/lsp/hover/not-supported", test_hover_not_supported);
   ADD_TEST ("/lsp/hover/stale", test_hover_stale);
+  ADD_TEST ("/lsp/completion/request", test_completion_request);
+  ADD_TEST ("/lsp/completion/not-supported", test_completion_not_supported);
 
 #undef ADD_TEST
 
