@@ -4,6 +4,21 @@
  * the application's resource-base-path (listed in palang.gresource.xml).
  */
 
+/* Square corners everywhere, like the window's frame below. GTK lets a
+ * style provider with a higher priority win whatever its selectors are, and
+ * this file is applied above libadwaita's theme, so "*" (every widget)
+ * overrides each of its rounded corners: buttons, entries, tabs, popovers,
+ * dialogs, rows, switches. */
+* {
+  border-radius: 0;
+}
+
+/* Except radio buttons: a square one would look like a check box.
+ * ("radio" names a widget's CSS node, so it beats "*".) */
+radio {
+  border-radius: 9999px;
+}
+
 /* Command palette and Problems rows: libadwaita pads the row
  * ("navigation-sidebar" gives it 8px left and right). Move that padding
  * into the row's contents, so the click handler on the contents
