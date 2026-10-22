@@ -2,6 +2,28 @@
 <gresources>
   <gresource prefix="/io/github/sahidev1/Palang">
     <file>style.css</file>
+    <!-- Palang's own icons (data/icons/README.md). GTK finds them by name
+         because they sit under <resource path>/icons/. -->
+    <file>icons/scalable/actions/palang-close-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-error-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-file-code-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-file-image-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-file-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-file-text-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-folder-open-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-folder-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-go-down-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-go-up-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-info-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-leopard-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-menu-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-replace-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-reveal-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-search-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-sidebar-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-tab-new-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-terminal-symbolic.svg</file>
+    <file>icons/scalable/actions/palang-warning-symbolic.svg</file>
     <file>ui/palang-editor.ui</file>
     <file>ui/palang-file-tree.ui</file>
     <file>ui/palang-lsp-problems-panel.ui</file>

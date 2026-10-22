@@ -25,7 +25,7 @@
 /* File details to read for each entry. */
 #define FILE_ATTRIBUTES \
   "standard::name,standard::display-name,standard::type," \
-  "standard::symbolic-icon,standard::is-hidden"
+  "standard::fast-content-type,standard::is-hidden"
 
 struct _PalangFileTree
 {
@@ -160,6 +160,60 @@ create_child_model (gpointer item,
 
 /* ---- Rows --------------------------------------------------------------- */
 
+/* Content types shown as plain text rather than code. Most code types
+ * (text/x-csrc, text/x-python, …) are subtypes of text/plain too. */
+static const char *const prose_types[] = {
+  "text/plain", "text/markdown", "text/x-readme", "text/x-log", "text/csv",
+};
+
+/* The name of an entry's icon: Palang's own (data/icons/). The type comes
+ * from "fast-content-type", a guess from the file's name alone, so listing a
+ * big folder doesn't read every file. */
+static const char *
+icon_name_for (GFileInfo *info,
+               gboolean   expanded)
+{
+  const char *type;
+
+  if (is_folder (info))
+    return expanded ? "palang-folder-open-symbolic" : "palang-folder-symbolic";
+
+  type = g_file_info_get_attribute_string (info, G_FILE_ATTRIBUTE_STANDARD_FAST_CONTENT_TYPE);
+  if (type == NULL)
+    return "palang-file-symbolic";
+
+  if (g_str_has_prefix (type, "image/"))
+    return "palang-file-image-symbolic";
+
+  for (gsize i = 0; i < G_N_ELEMENTS (prose_types); i++)
+    if (g_content_type_equals (type, prose_types[i]))
+      return "palang-file-text-symbolic";
+
+  if (g_content_type_is_a (type, "text/plain"))
+    return "palang-file-code-symbolic";
+
+  return "palang-file-symbolic";
+}
+
+/* Sets a row's icon from its entry and whether it is expanded. */
+static void
+update_row_icon (GtkTreeListRow *row,
+                 GtkImage       *icon)
+{
+  g_autoptr (GFileInfo) info = gtk_tree_list_row_get_item (row);
+
+  gtk_image_set_from_icon_name (icon, icon_name_for (info, gtk_tree_list_row_get_expanded (row)));
+}
+
+/* A folder opened or closed: its icon follows. */
+static void
+on_row_expanded (GtkTreeListRow *row,
+                 GParamSpec     *pspec,
+                 GtkImage       *icon)
+{
+  update_row_icon (row, icon);
+}
+
 /* A row's widgets: expander arrow → [icon  name]. Created once per visible
  * row slot and reused as the list scrolls. */
 static void
@@ -195,8 +249,26 @@ on_bind_row (GtkSignalListItemFactory *factory,
   g_autoptr (GFileInfo) info = gtk_tree_list_row_get_item (row);
 
   gtk_tree_expander_set_list_row (expander, row);
-  gtk_image_set_from_gicon (GTK_IMAGE (icon), g_file_info_get_symbolic_icon (info));
+  update_row_icon (row, GTK_IMAGE (icon));
   gtk_label_set_label (GTK_LABEL (label), g_file_info_get_display_name (info));
+
+  /* "notify::<property>" is emitted when a property changes. The row widgets
+   * are reused for other rows as the list scrolls, so on_unbind_row ()
+   * disconnects this again. */
+  g_signal_connect (row, "notify::expanded", G_CALLBACK (on_row_expanded), icon);
+}
+
+/* A row's widgets are about to show another entry: stop following this one. */
+static void
+on_unbind_row (GtkSignalListItemFactory *factory,
+               GtkListItem              *list_item,
+               PalangFileTree           *self)
+{
+  GtkTreeListRow *row = gtk_list_item_get_item (list_item);
+  GtkTreeExpander *expander = GTK_TREE_EXPANDER (gtk_list_item_get_child (list_item));
+  GtkWidget *icon = gtk_widget_get_first_child (gtk_tree_expander_get_child (expander));
+
+  g_signal_handlers_disconnect_by_func (row, on_row_expanded, icon);
 }
 
 /* A row was clicked (or Enter pressed on it). */
@@ -395,6 +467,7 @@ palang_file_tree_class_init (PalangFileTreeClass *klass)
   gtk_widget_class_bind_template_child (widget_class, PalangFileTree, list_view);
   gtk_widget_class_bind_template_callback (widget_class, on_setup_row);
   gtk_widget_class_bind_template_callback (widget_class, on_bind_row);
+  gtk_widget_class_bind_template_callback (widget_class, on_unbind_row);
   gtk_widget_class_bind_template_callback (widget_class, on_activate);
 }
 

@@ -296,7 +296,7 @@ _palang_window_init_lsp (PalangWindow *self)
   g_signal_connect (self->problems_panel, "problem-activated",
                     G_CALLBACK (on_problem_activated), self);
   palang_panel_add_page (self->panel, GTK_WIDGET (self->problems_panel),
-                         "problems", "Problems", "dialog-warning-symbolic");
+                         "problems", "Problems", "palang-warning-symbolic");
   g_signal_connect (self->tab_view, "page-attached", G_CALLBACK (on_page_attached), self);
   g_signal_connect (self->tab_view, "page-detached", G_CALLBACK (on_page_detached), self);
 }

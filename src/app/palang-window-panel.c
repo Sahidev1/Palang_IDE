@@ -123,7 +123,7 @@ add_terminal_page (PalangWindow *self)
                           G_BINDING_SYNC_CREATE);
 
   palang_panel_add_page (self->panel, GTK_WIDGET (self->terminal),
-                         "terminal", "Terminal", "utilities-terminal-symbolic");
+                         "terminal", "Terminal", "palang-terminal-symbolic");
 }
 
 /* While the terminal has the keyboard focus, keys belong to the shell:
@@ -219,7 +219,7 @@ add_search_page (PalangWindow *self)
                     G_CALLBACK (on_search_match_activated), self);
 
   palang_panel_add_page (self->panel, GTK_WIDGET (self->search_panel),
-                         "search", "Search", "system-search-symbolic");
+                         "search", "Search", "palang-search-symbolic");
 }
 
 PalangSearchPanel *

@@ -21,7 +21,7 @@
             </child>
             <child>
               <object class="GtkButton">
-                <property name="icon-name">window-close-symbolic</property>
+                <property name="icon-name">palang-close-symbolic</property>
                 <property name="tooltip-text">Hide Panel (Ctrl+J)</property>
                 <property name="hexpand">true</property>
                 <property name="halign">end</property>

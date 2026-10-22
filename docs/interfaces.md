@@ -228,6 +228,11 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `win.go-to-definition` (F12), `win.restart-language-servers`,
   `win.show-problems` (Ctrl+Shift+M), `win.show-completions`
   (Ctrl+Space).
+- **Icons:** Palang's own, `palang-…-symbolic` (e.g. `palang-close-symbolic`),
+  in `data/icons/scalable/actions/` and listed in `palang.gresource.xml`;
+  how to draw one is in `data/icons/README.md`. Use them instead of
+  Adwaita's names; add a new one the same way. The file tree picks file
+  icons by content type (`icon_name_for ()` in `palang-file-tree.c`).
 - **App stylesheet:** `data/style.css`, loaded by AdwApplication by
   itself (it's in the resource-base-path). Add Palang's own CSS there
   (later: ghost text, math blocks); give widgets a `palang-…` class.

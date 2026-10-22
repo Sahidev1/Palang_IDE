@@ -135,15 +135,15 @@ set_severity_icon (GtkWidget         *icon,
   switch (severity)
     {
     case PALANG_LSP_SEVERITY_ERROR:
-      gtk_image_set_from_icon_name (GTK_IMAGE (icon), "dialog-error-symbolic");
+      gtk_image_set_from_icon_name (GTK_IMAGE (icon), "palang-error-symbolic");
       gtk_widget_add_css_class (icon, "error");
       break;
     case PALANG_LSP_SEVERITY_WARNING:
-      gtk_image_set_from_icon_name (GTK_IMAGE (icon), "dialog-warning-symbolic");
+      gtk_image_set_from_icon_name (GTK_IMAGE (icon), "palang-warning-symbolic");
       gtk_widget_add_css_class (icon, "warning");
       break;
     default:
-      gtk_image_set_from_icon_name (GTK_IMAGE (icon), "dialog-information-symbolic");
+      gtk_image_set_from_icon_name (GTK_IMAGE (icon), "palang-info-symbolic");
       gtk_widget_add_css_class (icon, "accent");
       break;
     }

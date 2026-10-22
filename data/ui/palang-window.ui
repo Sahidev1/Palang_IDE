@@ -93,7 +93,7 @@
                 </property>
                 <child type="end">
                   <object class="GtkToggleButton">
-                    <property name="icon-name">view-reveal-symbolic</property>
+                    <property name="icon-name">palang-reveal-symbolic</property>
                     <property name="tooltip-text">Show Hidden Files</property>
                     <property name="active" bind-source="file_tree" bind-property="show-hidden" bind-flags="sync-create|bidirectional"/>
                   </object>
@@ -114,7 +114,7 @@
               <object class="AdwHeaderBar">
                 <child type="start">
                   <object class="GtkToggleButton">
-                    <property name="icon-name">sidebar-show-symbolic</property>
+                    <property name="icon-name">palang-sidebar-symbolic</property>
                     <property name="tooltip-text">Show Folder (F9)</property>
                     <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create|bidirectional"/>
                   </object>
@@ -129,7 +129,7 @@
                 </child>
                 <child type="start">
                   <object class="GtkButton">
-                    <property name="icon-name">tab-new-symbolic</property>
+                    <property name="icon-name">palang-tab-new-symbolic</property>
                     <property name="action-name">win.new</property>
                     <property name="tooltip-text">New File (Ctrl+N)</property>
                   </object>
@@ -141,7 +141,7 @@
                 </property>
                 <child type="end">
                   <object class="GtkMenuButton">
-                    <property name="icon-name">open-menu-symbolic</property>
+                    <property name="icon-name">palang-menu-symbolic</property>
                     <property name="menu-model">primary_menu</property>
                     <property name="primary">true</property>
                     <property name="tooltip-text">Main Menu</property>
@@ -149,7 +149,7 @@
                 </child>
                 <child type="end">
                   <object class="GtkToggleButton">
-                    <property name="icon-name">utilities-terminal-symbolic</property>
+                    <property name="icon-name">palang-terminal-symbolic</property>
                     <property name="tooltip-text">Show Panel: Terminal, Search (Ctrl+J)</property>
                     <property name="active" bind-source="panel" bind-property="visible" bind-flags="sync-create|bidirectional"/>
                   </object>
@@ -182,7 +182,7 @@
                             <property name="name">empty</property>
                             <property name="child">
                               <object class="AdwStatusPage">
-                                <property name="icon-name">text-editor-symbolic</property>
+                                <property name="icon-name">palang-leopard-symbolic</property>
                                 <property name="title">No Open Files</property>
                                 <property name="description">Press Ctrl+O to open a file, Ctrl+Shift+O to open a folder, or Ctrl+N to start a new file.</property>
                               </object>

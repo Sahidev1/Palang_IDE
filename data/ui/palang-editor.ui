@@ -36,7 +36,7 @@
                 </child>
                 <child>
                   <object class="GtkButton">
-                    <property name="icon-name">window-close-symbolic</property>
+                    <property name="icon-name">palang-close-symbolic</property>
                     <property name="tooltip-text">Close (Esc)</property>
                     <signal name="clicked" handler="on_go_to_close_clicked"/>
                     <style>

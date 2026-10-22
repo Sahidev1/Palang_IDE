@@ -7,7 +7,7 @@
     <child>
       <object class="AdwPreferencesPage">
         <property name="title">Editor</property>
-        <property name="icon-name">text-editor-symbolic</property>
+        <property name="icon-name">palang-file-code-symbolic</property>
 
         <child>
           <object class="AdwPreferencesGroup">

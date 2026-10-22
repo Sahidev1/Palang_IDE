@@ -107,6 +107,12 @@ xdotool key ctrl+q                                   # quit; check exit code 0
   1100x800x24" bash script.sh`, with `xdotool search --onlyvisible --name
   Palang` (there is no window manager there, so skip `windowactivate`).
 - Never modify the repo's real files from outside to test a feature.
+- **First check `pgrep -a palang`.** Palang is a single-instance
+  GApplication on the D-Bus session bus, and `xvfb-run` shares that bus:
+  if sahi has Palang open, the files go to *their* window instead
+  (happened 2026-10-22). Ask them to close it, or run under
+  `dbus-run-session --` (the window then takes ~25 s to appear while the
+  portals time out).
 
 ## Status
 

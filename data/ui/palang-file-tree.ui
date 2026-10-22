@@ -10,7 +10,7 @@
             <property name="name">empty</property>
             <property name="child">
               <object class="AdwStatusPage">
-                <property name="icon-name">folder-open-symbolic</property>
+                <property name="icon-name">palang-folder-open-symbolic</property>
                 <property name="title">No Folder Open</property>
                 <property name="child">
                   <object class="GtkButton">
@@ -45,6 +45,7 @@
                       <object class="GtkSignalListItemFactory">
                         <signal name="setup" handler="on_setup_row"/>
                         <signal name="bind" handler="on_bind_row"/>
+                        <signal name="unbind" handler="on_unbind_row"/>
                       </object>
                     </property>
                     <style>

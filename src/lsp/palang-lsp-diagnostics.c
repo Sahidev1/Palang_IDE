@@ -26,9 +26,9 @@ typedef struct {
 } Style;
 
 static const Style styles[] = {
-  { "palang-lsp-error",   "#e01b24", "dialog-error-symbolic",       30 },
-  { "palang-lsp-warning", "#e5a50a", "dialog-warning-symbolic",     20 },
-  { "palang-lsp-info",    "#3584e4", "dialog-information-symbolic", 10 },
+  { "palang-lsp-error",   "#e01b24", "palang-error-symbolic",   30 },
+  { "palang-lsp-warning", "#e5a50a", "palang-warning-symbolic", 20 },
+  { "palang-lsp-info",    "#3584e4", "palang-info-symbolic",    10 },
 };
 
 typedef struct {

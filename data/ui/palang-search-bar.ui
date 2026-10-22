@@ -64,7 +64,7 @@
               </child>
               <child>
                 <object class="GtkButton">
-                  <property name="icon-name">go-up-symbolic</property>
+                  <property name="icon-name">palang-go-up-symbolic</property>
                   <property name="tooltip-text">Previous Match (Shift+F3)</property>
                   <signal name="clicked" handler="on_previous_clicked"/>
                   <style>
@@ -74,7 +74,7 @@
               </child>
               <child>
                 <object class="GtkButton">
-                  <property name="icon-name">go-down-symbolic</property>
+                  <property name="icon-name">palang-go-down-symbolic</property>
                   <property name="tooltip-text">Next Match (F3)</property>
                   <signal name="clicked" handler="on_next_clicked"/>
                   <style>
@@ -84,7 +84,7 @@
               </child>
               <child>
                 <object class="GtkToggleButton" id="replace_toggle">
-                  <property name="icon-name">edit-find-replace-symbolic</property>
+                  <property name="icon-name">palang-replace-symbolic</property>
                   <property name="tooltip-text">Replace (Ctrl+H)</property>
                   <style>
                     <class name="flat"/>
@@ -93,7 +93,7 @@
               </child>
               <child>
                 <object class="GtkButton">
-                  <property name="icon-name">window-close-symbolic</property>
+                  <property name="icon-name">palang-close-symbolic</property>
                   <property name="tooltip-text">Close (Esc)</property>
                   <signal name="clicked" handler="on_close_clicked"/>
                   <style>
