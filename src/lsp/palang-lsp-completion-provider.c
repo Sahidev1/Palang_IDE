@@ -19,6 +19,9 @@
  *
  * Changing what is typed only re-scores the items (rescore ()); the
  * chain updates itself and the popup with it.
+ *
+ * One provider per view: it also watches that view's keys for the Enter
+ * rule (see "Enter after a whole word").
  */
 
 #include "config.h"
@@ -35,6 +38,11 @@ struct _PalangLspCompletionProvider
 
   /* A weak pointer: GLib sets it to NULL when the manager is finalized. */
   PalangLspManager *manager;
+
+  /* For the Enter rule (see "Enter after a whole word" below). */
+  GtkSourceView *view;   /* weak pointer: the view we complete in */
+  GListModel    *shown;  /* owned, nullable: the list of the last completion */
+  gboolean       moved;  /* the selection was moved in it */
 };
 
 static void completion_provider_iface_init (GtkSourceCompletionProviderInterface *iface);
@@ -206,8 +214,10 @@ on_completed (GObject      *source,
               gpointer      user_data)
 {
   g_autoptr (GTask) task = user_data;
+  PalangLspCompletionProvider *self = g_task_get_source_object (task);
   GtkSourceCompletionContext *context = g_task_get_task_data (task);
   g_autoptr (GListModel) items = NULL;
+  g_autoptr (GListModel) model = NULL;
   g_autoptr (GError) error = NULL;
   gboolean incomplete = FALSE;
 
@@ -221,7 +231,9 @@ on_completed (GObject      *source,
 
   /* The context's word is what is typed *now*, which may be more than
    * when we asked. */
-  g_task_return_pointer (task, new_results_model (items, incomplete, context), g_object_unref);
+  model = new_results_model (items, incomplete, context);
+  g_set_object (&self->shown, model);
+  g_task_return_pointer (task, g_steal_pointer (&model), g_object_unref);
 }
 
 static void
@@ -239,6 +251,10 @@ palang_lsp_completion_provider_populate_async (GtkSourceCompletionProvider *prov
   gunichar trigger = 0;
 
   g_task_set_task_data (task, g_object_ref (context), g_object_unref);
+
+  /* A new completion: forget the last one's list (for the Enter rule). */
+  g_clear_object (&self->shown);
+  self->moved = FALSE;
 
   if (client == NULL || !gtk_source_completion_context_get_bounds (context, &begin, &end))
     {
@@ -386,6 +402,103 @@ palang_lsp_completion_provider_get_title (GtkSourceCompletionProvider *provider)
   return g_strdup ("Language Server");
 }
 
+/* ---- Enter after a whole word ------------------------------------------- */
+
+/* The popup opens with its first entry selected, so Enter or Tab takes it.
+ * But after typing a whole word ("return"), the first entry is often that
+ * very word, and Enter should start a new line, not "insert" what is
+ * there already. So when the popup is open, the selection wasn't moved,
+ * and the text before the cursor already is the first entry's text, Enter
+ * closes the popup and goes on to the text view. Tab still takes the
+ * entry.
+ *
+ * GtkSourceView doesn't tell which entry is selected, nor when its popup
+ * opens and closes (its "show" and "hide" signals are requests, not
+ * emitted when the popup opens by itself). So we remember the list of the
+ * last completion (self->shown), and whether Up, Down, Page Up or Page
+ * Down was pressed since it started: if not, the first entry is selected.
+ * If the popup was closed meanwhile (Escape), hiding it again does
+ * nothing and Enter starts a new line, as it should. */
+
+static gboolean
+is_word_character (gunichar ch)
+{
+  return g_unichar_isalnum (ch) || ch == '_';
+}
+
+/* Returns: TRUE if the whole word before the cursor already is the text
+ * the first entry would insert. */
+static gboolean
+first_entry_is_typed (PalangLspCompletionProvider *self)
+{
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (self->view));
+  g_autoptr (PalangLspCompletionItem) first = NULL;
+  g_autofree char *before = NULL;
+  const char *new_text;
+  GtkTextIter start, cursor, previous;
+
+  if (self->shown == NULL)
+    return FALSE;
+
+  first = g_list_model_get_item (self->shown, 0);
+  if (first == NULL)
+    return FALSE;
+
+  new_text = palang_lsp_completion_item_get_new_text (first);
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+  start = cursor;
+  if (!gtk_text_iter_backward_chars (&start, g_utf8_strlen (new_text, -1)))
+    return FALSE;
+
+  before = gtk_text_iter_get_text (&start, &cursor);
+  if (!g_str_equal (before, new_text))
+    return FALSE;
+
+  /* "xreturn" isn't the word "return". */
+  previous = start;
+  return !gtk_text_iter_backward_char (&previous) ||
+         !is_word_character (gtk_text_iter_get_char (&previous));
+}
+
+/* A key controller in the capture phase on the view's parent (see
+ * palang_lsp_completion_provider_new ()): it sees the view's keys before
+ * the view and its completion do. It only watches and maybe closes the
+ * popup; the key always goes on (PROPAGATE). */
+static gboolean
+on_view_key_pressed (GtkEventControllerKey       *controller,
+                     guint                        keyval,
+                     guint                        keycode,
+                     GdkModifierType              state,
+                     PalangLspCompletionProvider *self)
+{
+  if (self->shown == NULL || self->view == NULL)
+    return GDK_EVENT_PROPAGATE;
+
+  switch (keyval)
+    {
+    case GDK_KEY_Up:
+    case GDK_KEY_Down:
+    case GDK_KEY_Page_Up:
+    case GDK_KEY_Page_Down:
+    case GDK_KEY_KP_Up:
+    case GDK_KEY_KP_Down:
+      self->moved = TRUE;
+      break;
+
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter:
+    case GDK_KEY_ISO_Enter:
+      if (!self->moved && first_entry_is_typed (self))
+        gtk_source_completion_hide (gtk_source_view_get_completion (self->view));
+      break;
+
+    default:
+      break;
+    }
+
+  return GDK_EVENT_PROPAGATE;
+}
+
 /* ---- GObject boilerplate ------------------------------------------------ */
 
 static void
@@ -406,6 +519,8 @@ palang_lsp_completion_provider_dispose (GObject *object)
   PalangLspCompletionProvider *self = PALANG_LSP_COMPLETION_PROVIDER (object);
 
   g_clear_weak_pointer (&self->manager);
+  g_clear_weak_pointer (&self->view);
+  g_clear_object (&self->shown);
 
   G_OBJECT_CLASS (palang_lsp_completion_provider_parent_class)->dispose (object);
 }
@@ -422,13 +537,33 @@ palang_lsp_completion_provider_init (PalangLspCompletionProvider *self)
 }
 
 PalangLspCompletionProvider *
-palang_lsp_completion_provider_new (PalangLspManager *manager)
+palang_lsp_completion_provider_new (PalangLspManager *manager,
+                                    GtkSourceView    *view)
 {
   PalangLspCompletionProvider *self;
+  GtkEventController *keys;
 
   g_return_val_if_fail (PALANG_IS_LSP_MANAGER (manager), NULL);
+  g_return_val_if_fail (GTK_SOURCE_IS_VIEW (view), NULL);
 
   self = g_object_new (PALANG_TYPE_LSP_COMPLETION_PROVIDER, NULL);
   g_set_weak_pointer (&self->manager, manager);
+  g_set_weak_pointer (&self->view, view);
+
+  /* The Enter rule needs to see Enter, Up and Down before the completion
+   * does. GtkSourceCompletion takes them with its own capture-phase
+   * controller on the view, which runs before any we add to the view. In
+   * the capture phase an event goes from the window down to the focused
+   * widget, so a controller on the view's parent (its GtkScrolledWindow)
+   * runs first. g_signal_connect_object (): the connection ends when
+   * @self is finalized, so no key reaches a provider that is gone. */
+  if (gtk_widget_get_parent (GTK_WIDGET (view)) != NULL)
+    {
+      keys = gtk_event_controller_key_new ();
+      gtk_event_controller_set_propagation_phase (keys, GTK_PHASE_CAPTURE);
+      g_signal_connect_object (keys, "key-pressed", G_CALLBACK (on_view_key_pressed), self, 0);
+      gtk_widget_add_controller (gtk_widget_get_parent (GTK_WIDGET (view)), keys);
+    }
+
   return self;
 }

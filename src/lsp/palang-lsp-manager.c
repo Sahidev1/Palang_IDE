@@ -353,7 +353,7 @@ palang_lsp_manager_add_view (PalangLspManager *self,
    * when the popup opens, so Enter or Tab takes it (as in most editors);
    * our entries have no icons, so no room is kept for them. */
   completion = gtk_source_view_get_completion (view);
-  completion_provider = palang_lsp_completion_provider_new (self);
+  completion_provider = palang_lsp_completion_provider_new (self, view);
   gtk_source_completion_add_provider (completion,
                                       GTK_SOURCE_COMPLETION_PROVIDER (completion_provider));
   g_object_set (completion, "select-on-show", TRUE, "show-icons", FALSE, NULL);

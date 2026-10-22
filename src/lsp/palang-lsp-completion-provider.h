@@ -21,9 +21,13 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (PalangLspCompletionProvider, palang_lsp_completion_provider,
                       PALANG, LSP_COMPLETION_PROVIDER, GObject)
 
-/* Returns: (transfer full): a provider that finds documents through
- * @manager (not referenced: once the manager is gone, it offers
- * nothing). */
-PalangLspCompletionProvider *palang_lsp_completion_provider_new (PalangLspManager *manager);
+/* Returns: (transfer full): a provider for @view (not referenced; add the
+ * provider to the view's completion), finding documents through @manager
+ * (not referenced: once the manager is gone, it offers nothing). It also
+ * watches @view's keys (from its parent, which it must already have):
+ * Enter after a word that already is the first entry starts a new line
+ * instead of taking the entry. */
+PalangLspCompletionProvider *palang_lsp_completion_provider_new (PalangLspManager *manager,
+                                                                 GtkSourceView    *view);
 
 G_END_DECLS

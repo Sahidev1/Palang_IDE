@@ -172,6 +172,10 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   meanwhile. Fuzzy matching uses GtkSourceView's matcher
   (`gtk_source_completion_fuzzy_match`, lower score is better), not
   `palette/`'s (rule 2: `lsp/` doesn't include `palette/`).
+- **Enter rule** (sahi's choice): the popup preselects its first entry, so
+  Enter or Tab takes it; but if the word before the cursor already is that
+  entry and the selection wasn't moved, Enter starts a new line. The
+  provider watches keys from the view's parent (CLAUDE.md gotcha 16).
 - **Phase 3 (AI completion)** can be a second `GtkSourceCompletionProvider`
   on the same view, or ghost text beside it; `add_view ()` sets the
   view's completion to `select-on-show` and hides icons.

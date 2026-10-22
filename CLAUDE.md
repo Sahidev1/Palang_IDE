@@ -179,6 +179,12 @@ the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
     of view when rows arrive; we show headings inside rows instead.
 15. **VTE emits `child-exited` while being destroyed:** disconnect from it
     in `dispose`.
+16. **GtkSourceCompletion takes keys first:** its capture-phase key
+    controller on the view runs before any you add to the view, and eats
+    Enter, Tab, Up, Down while the popup is open. To see them first, put
+    the controller on the view's parent (`palang-lsp-completion-provider.c`).
+    Its `show`/`hide` signals are requests, not emitted when the popup
+    opens by itself while typing.
 
 ## Memory
 
