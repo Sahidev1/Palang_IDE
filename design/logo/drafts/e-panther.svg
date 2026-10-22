@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb02e"/><stop offset="1" stop-color="#c2410c"/>
+    </linearGradient>
+    <linearGradient id="eye" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4ff8a"/><stop offset="1" stop-color="#a6f02a"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.4"/>
+    </filter>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="url(#bg)"/>
+  <!-- silhouette -->
+  <path d="M64 22 L84 26 L104 12 L107 46 L113 64 L104 87 L86 104 L64 115 L42 104 L24 87 L15 64 L21 46 L24 12 L44 26 Z" fill="#0d0c12"/>
+  <!-- inner ears -->
+  <path d="M29 21 L42 29 L30 40 Z" fill="#26232e"/>
+  <path d="M99 21 L86 29 L98 40 Z" fill="#26232e"/>
+  <!-- facets -->
+  <path d="M64 26 L46 31 L56 52 L64 57 L72 52 L82 31 Z" fill="#1a1922"/>
+  <path d="M21 48 L38 62 L28 82 L17 64 Z" fill="#17161e"/>
+  <path d="M107 48 L90 62 L100 82 L111 64 Z" fill="#17161e"/>
+  <path d="M57 56 L71 56 L73 74 L55 74 Z" fill="#22212b"/>
+  <path d="M42 78 L55 74 L64 84 L64 104 L46 96 Z" fill="#1d1c25"/>
+  <path d="M86 78 L73 74 L64 84 L64 104 L82 96 Z" fill="#191821"/>
+  <!-- ghost rosettes -->
+  <g fill="#24222d">
+    <path d="M60 33 L64 30 L68 33 L64 38 Z"/>
+    <path d="M50 38 L54 36 L54 41 Z"/><path d="M78 38 L74 36 L74 41 Z"/>
+    <path d="M26 58 L32 56 L30 62 Z"/><path d="M102 58 L96 56 L98 62 Z"/>
+    <path d="M30 70 L35 68 L34 74 Z"/><path d="M98 70 L93 68 L94 74 Z"/>
+  </g>
+  <!-- brow ridge -->
+  <path d="M26 50 L59 57 L60 52 L32 44 Z" fill="#000"/>
+  <path d="M102 50 L69 57 L68 52 L96 44 Z" fill="#000"/>
+  <!-- eyes -->
+  <g filter="url(#glow)" fill="#c8ff2a">
+    <path d="M32 57 L57 62 L51 68 L38 65 Z"/>
+    <path d="M96 57 L71 62 L77 68 L90 65 Z"/>
+  </g>
+  <path d="M32 57 L57 62 L51 68 L38 65 Z" fill="url(#eye)"/>
+  <path d="M96 57 L71 62 L77 68 L90 65 Z" fill="url(#eye)"/>
+  <path d="M46.6 59.6 L48.4 60 L47.8 67 L46.8 66.8 Z" fill="#000"/>
+  <path d="M81.4 59.6 L79.6 60 L80.2 67 L81.2 66.8 Z" fill="#000"/>
+  <!-- nose and mouth -->
+  <path d="M55 74 L73 74 L68 81 L64 83 L60 81 Z" fill="#000"/>
+  <g fill="none" stroke="#000" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M64 83 L64 92 L54 98"/><path d="M64 92 L74 98"/>
+  </g>
+  <!-- a glint of fang -->
+  <path d="M55 97 L58 96 L56.5 103 Z" fill="#f2efe8"/>
+  <path d="M73 97 L70 96 L71.5 103 Z" fill="#f2efe8"/>
+  <!-- rim light on the cheek edges -->
+  <g fill="none" stroke="#ff9a3a" stroke-width="1.3" opacity="0.7" stroke-linejoin="round">
+    <path d="M24 12 L44 26 L64 22 L84 26 L104 12"/>
+    <path d="M15 64 L24 87 L42 104 L64 115 L86 104 L104 87 L113 64"/>
+  </g>
+</svg>

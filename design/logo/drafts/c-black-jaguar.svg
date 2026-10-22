@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- C: black jaguar (panther): dark face, faint rosettes, glowing eyes -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6b23c"/><stop offset="1" stop-color="#d9661c"/>
+    </linearGradient>
+    <radialGradient id="fur" cx="0.5" cy="0.4" r="0.65">
+      <stop offset="0" stop-color="#3a3644"/><stop offset="1" stop-color="#14121a"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#eaff7a"/><stop offset="1" stop-color="#7fd62a"/>
+    </radialGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="url(#tile)"/>
+  <!-- ears -->
+  <path d="M20 50 L26 18 L52 30 Z" fill="#1d1a24"/>
+  <path d="M108 50 L102 18 L76 30 Z" fill="#1d1a24"/>
+  <path d="M27 42 L30 25 L44 31 Z" fill="#4a4456"/>
+  <path d="M101 42 L98 25 L84 31 Z" fill="#4a4456"/>
+  <!-- head -->
+  <path d="M64 24 C 86 24, 104 34, 108 56 C 111 76, 100 96, 82 108 L 64 114 L 46 108 C 28 96, 17 76, 20 56 C 24 34, 42 24, 64 24 Z" fill="url(#fur)"/>
+  <!-- faint rosettes (black-on-black, as in real black jaguars) -->
+  <g fill="none" stroke="#4d4858" stroke-width="2.2" stroke-linecap="round" opacity="0.9">
+    <path d="M56 34 a5 5 0 0 1 8 -2 M70 33 a5 5 0 0 1 4 6"/>
+    <path d="M36 46 a5 5 0 0 1 7 -3 M30 66 a5 5 0 0 1 6 -6 M38 64 a5 5 0 0 1 -2 7"/>
+    <path d="M92 46 a5 5 0 0 0 -7 -3 M98 66 a5 5 0 0 0 -6 -6 M90 64 a5 5 0 0 0 2 7"/>
+    <path d="M34 82 a5 5 0 0 1 6 -3 M94 82 a5 5 0 0 0 -6 -3"/>
+  </g>
+  <!-- muzzle -->
+  <path d="M64 66 C 50 66, 42 76, 44 88 C 46 98, 56 104, 64 104 C 72 104, 82 98, 84 88 C 86 76, 78 66, 64 66 Z" fill="#2b2833"/>
+  <!-- eyes -->
+  <path d="M34 58 Q 45 47 58 56 Q 46 66 34 58 Z" fill="url(#glow)"/>
+  <path d="M94 58 Q 83 47 70 56 Q 82 66 94 58 Z" fill="url(#glow)"/>
+  <ellipse cx="47" cy="57" rx="2" ry="5.5" fill="#05040a"/>
+  <ellipse cx="81" cy="57" rx="2" ry="5.5" fill="#05040a"/>
+  <circle cx="45.5" cy="54.5" r="1.2" fill="#fff"/>
+  <circle cx="79.5" cy="54.5" r="1.2" fill="#fff"/>
+  <g fill="none" stroke="#05040a" stroke-width="2.2" stroke-linecap="round">
+    <path d="M30 52 Q 44 42 60 50"/><path d="M98 52 Q 84 42 68 50"/>
+  </g>
+  <!-- nose and mouth -->
+  <path d="M56 72 Q 64 69 72 72 Q 70 79 64 82 Q 58 79 56 72 Z" fill="#0a0910"/>
+  <path d="M64 82 L64 89 Q 58 95 51 92 M64 89 Q 70 95 77 92" fill="none" stroke="#0a0910" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- whiskers -->
+  <g stroke="#8c8698" stroke-width="1" stroke-linecap="round" opacity="0.8">
+    <line x1="46" y1="86" x2="22" y2="82"/><line x1="46" y1="89" x2="22" y2="92"/>
+    <line x1="82" y1="86" x2="106" y2="82"/><line x1="82" y1="89" x2="106" y2="92"/>
+  </g>
+</svg>

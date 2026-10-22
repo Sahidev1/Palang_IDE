@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- B: geometric, fierce leopard on a dark tile -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d3240"/><stop offset="1" stop-color="#151820"/>
+    </linearGradient>
+    <linearGradient id="furL" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc857"/><stop offset="1" stop-color="#e08a1e"/>
+    </linearGradient>
+    <linearGradient id="furR" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0a630"/><stop offset="1" stop-color="#b8661a"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="url(#tile)"/>
+  <!-- ears -->
+  <polygon points="22,22 50,32 30,52" fill="#c9721c"/>
+  <polygon points="106,22 78,32 98,52" fill="#a85e17"/>
+  <polygon points="27,29 43,34 32,45" fill="#1a1210"/>
+  <polygon points="101,29 85,34 96,45" fill="#1a1210"/>
+  <!-- head halves: facets -->
+  <polygon points="64,24 30,34 18,64 30,92 52,108 64,110" fill="url(#furL)"/>
+  <polygon points="64,24 98,34 110,64 98,92 76,108 64,110" fill="url(#furR)"/>
+  <!-- lighter facets -->
+  <polygon points="64,24 44,40 64,52" fill="#ffd77a" opacity="0.55"/>
+  <polygon points="18,64 30,92 40,72" fill="#ffe0a0" opacity="0.35"/>
+  <polygon points="110,64 98,92 88,72" fill="#000" opacity="0.12"/>
+  <!-- muzzle -->
+  <polygon points="64,66 44,80 50,98 64,106" fill="#fff4dc"/>
+  <polygon points="64,66 84,80 78,98 64,106" fill="#ead9b8"/>
+  <!-- rosettes: angular broken rings -->
+  <g fill="#1a1210">
+    <polygon points="60,30 64,27 68,30 64,34"/>
+    <polygon points="52,36 56,35 55,40"/><polygon points="76,36 72,35 73,40"/>
+    <polygon points="58,44 62,43 61,47"/><polygon points="70,44 66,43 67,47"/>
+    <polygon points="36,40 42,38 40,44"/><polygon points="92,40 86,38 88,44"/>
+    <polygon points="24,62 30,56 32,60 27,64"/><polygon points="30,70 36,68 34,74"/>
+    <polygon points="104,62 98,56 96,60 101,64"/><polygon points="98,70 92,68 94,74"/>
+    <polygon points="30,84 36,80 37,85"/><polygon points="98,84 92,80 91,85"/>
+  </g>
+  <!-- eyes: narrow, angled, glowing -->
+  <polygon points="34,58 50,52 58,60 46,63" fill="#c6f04a"/>
+  <polygon points="94,58 78,52 70,60 82,63" fill="#c6f04a"/>
+  <polygon points="45,53 48,53 48,62 45,62" fill="#0b0805"/>
+  <polygon points="83,53 80,53 80,62 83,62" fill="#0b0805"/>
+  <g fill="none" stroke="#0b0805" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <polyline points="31,57 50,50 60,60 46,64 34,58"/>
+    <polyline points="97,57 78,50 68,60 82,64 94,58"/>
+    <!-- brow lines -->
+    <polyline points="36,48 52,44 60,50"/>
+    <polyline points="92,48 76,44 68,50"/>
+    <!-- tear marks -->
+    <polyline points="59,61 58,72"/><polyline points="69,61 70,72"/>
+  </g>
+  <!-- nose -->
+  <polygon points="55,70 73,70 64,80" fill="#2a1a14"/>
+  <polygon points="58,71 64,71 62,74" fill="#6b4a3e"/>
+  <!-- mouth -->
+  <polyline points="64,80 64,88 56,94" fill="none" stroke="#0b0805" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+  <polyline points="64,88 72,94" fill="none" stroke="#0b0805" stroke-width="2.6" stroke-linecap="round"/>
+</svg>

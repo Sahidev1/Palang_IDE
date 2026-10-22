@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.45" r="0.7">
+      <stop offset="0" stop-color="#3a2a1c"/><stop offset="1" stop-color="#0f0d10"/>
+    </radialGradient>
+    <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb93a"/><stop offset="1" stop-color="#d06a12"/>
+    </linearGradient>
+    <linearGradient id="eye" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2ff6a"/><stop offset="1" stop-color="#7ccf1c"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2"/>
+    </filter>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="url(#bg)"/>
+  <g stroke="#120a06" stroke-width="3" stroke-linejoin="round">
+    <!-- ears, swept back -->
+    <path d="M24 46 L18 14 L50 26 Z" fill="#b8560f"/>
+    <path d="M104 46 L110 14 L78 26 Z" fill="#b8560f"/>
+    <path d="M27 38 L24 22 L40 28 Z" fill="#2a160c" stroke="none"/>
+    <path d="M101 38 L104 22 L88 28 Z" fill="#2a160c" stroke="none"/>
+    <!-- head with cheek fur spikes -->
+    <path d="M64 20 C80 20 94 26 102 38 L110 52 L105 60 L115 70 L104 76 L109 88 L94 92 L84 108 L64 116 L44 108 L34 92 L19 88 L24 76 L13 70 L23 60 L18 52 L26 38 C34 26 48 20 64 20 Z" fill="url(#fur)"/>
+  </g>
+  <!-- side shading -->
+  <path d="M26 38 L18 52 L23 60 L13 70 L24 76 L19 88 L34 92 L36 70 Z" fill="#7a3508" opacity="0.35"/>
+  <path d="M102 38 L110 52 L105 60 L115 70 L104 76 L109 88 L94 92 L92 70 Z" fill="#7a3508" opacity="0.35"/>
+  <!-- nose bridge, lighter -->
+  <path d="M57 50 L71 50 L73 72 L55 72 Z" fill="#ffd27a"/>
+  <!-- rosettes: sharp broken rings -->
+  <g fill="#1a0e08">
+    <path d="M60 26 L64 23 L68 26 L64 31 Z"/>
+    <path d="M50 30 L55 28 L54 34 Z"/><path d="M78 30 L73 28 L74 34 Z"/>
+    <path d="M42 36 L48 36 L44 41 Z"/><path d="M86 36 L80 36 L84 41 Z"/>
+    <path d="M24 64 L31 60 L30 66 Z"/><path d="M32 70 L36 66 L37 73 Z"/><path d="M26 74 L31 76 L27 80 Z"/>
+    <path d="M104 64 L97 60 L98 66 Z"/><path d="M96 70 L92 66 L91 73 Z"/><path d="M102 74 L97 76 L101 80 Z"/>
+    <path d="M38 82 L43 80 L42 86 Z"/><path d="M90 82 L85 80 L86 86 Z"/>
+  </g>
+  <!-- furrowed forehead -->
+  <g fill="none" stroke="#1a0e08" stroke-width="2.4" stroke-linecap="round">
+    <path d="M60 38 L62 48"/><path d="M68 38 L66 48"/><path d="M64 34 L64 46"/>
+  </g>
+  <!-- eye glow -->
+  <g filter="url(#glow)" fill="#d8ff3a" opacity="0.8">
+    <path d="M33 56 L57 61 L52 68 L39 65 Z"/>
+    <path d="M95 56 L71 61 L76 68 L89 65 Z"/>
+  </g>
+  <!-- eyes: hooded, slanted, slit pupils -->
+  <g stroke="#0b0604" stroke-width="2.6" stroke-linejoin="round">
+    <path d="M33 56 L57 61 L52 68 L39 65 Z" fill="url(#eye)"/>
+    <path d="M95 56 L71 61 L76 68 L89 65 Z" fill="url(#eye)"/>
+  </g>
+  <path d="M46.5 59 L48.5 59.5 L47.8 66.5 L46.6 66.3 Z" fill="#050302"/>
+  <path d="M81.5 59 L79.5 59.5 L80.2 66.5 L81.4 66.3 Z" fill="#050302"/>
+  <!-- heavy brows -->
+  <path d="M28 51 L59 57 L60 50 L33 44 Z" fill="#1a0e08"/>
+  <path d="M100 51 L69 57 L68 50 L95 44 Z" fill="#1a0e08"/>
+  <!-- snarl wrinkles -->
+  <g fill="none" stroke="#7a3508" stroke-width="2" stroke-linecap="round">
+    <path d="M58 64 Q64 61 70 64"/><path d="M57 68 Q64 65 71 68"/>
+  </g>
+  <!-- raised cheeks -->
+  <g fill="#fff1d6" stroke="#120a06" stroke-width="2.4" stroke-linejoin="round">
+    <path d="M62 80 C55 77 44 79 39 87 C42 93 50 95 56 92 Z"/>
+    <path d="M66 80 C73 77 84 79 89 87 C86 93 78 95 72 92 Z"/>
+  </g>
+  <!-- open mouth -->
+  <path d="M45 92 C52 89 58 88 64 88 C70 88 76 89 83 92 C80 103 72 110 64 110 C56 110 48 103 45 92 Z" fill="#4a0f12" stroke="#120a06" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M54 104 Q64 100 74 104 Q70 109 64 109 Q58 109 54 104 Z" fill="#a8323a"/>
+  <!-- fangs -->
+  <g fill="#fffaf0" stroke="#120a06" stroke-width="1.6" stroke-linejoin="round">
+    <path d="M49 91 L56 90 L52.5 104 Z"/>
+    <path d="M79 91 L72 90 L75.5 104 Z"/>
+    <path d="M55 108 L59 108 L57 100 Z"/>
+    <path d="M73 108 L69 108 L71 100 Z"/>
+    <path d="M58 89.5 L62 89 L60 93 Z"/><path d="M62 89 L66 89 L64 93 Z"/><path d="M66 89 L70 89.5 L68 93 Z"/>
+  </g>
+  <!-- nose -->
+  <path d="M54 71 L74 71 L70 79 L64 82 L58 79 Z" fill="#1a0e08" stroke="#0b0604" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M58 72.5 L64 72.5 L61 75.5 Z" fill="#5a3a2c"/>
+</svg>
