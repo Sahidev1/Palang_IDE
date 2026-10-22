@@ -230,7 +230,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   (Ctrl+Space).
 - **Icons:** Palang's own, `palang-…-symbolic` (e.g. `palang-close-symbolic`),
   in `data/icons/scalable/actions/` and listed in `palang.gresource.xml`;
-  how to draw one is in `data/icons/README.md`. Use them instead of
+  how to draw one is in `data/icons/README.md`. Their accent (the
+  "warning" palette color) is the logo's amber, set in `style.css` and
+  `style-dark.css`. Use them instead of
   Adwaita's names; add a new one the same way. The file tree picks file
   icons by content type (`icon_name_for ()` in `palang-file-tree.c`).
 - **App stylesheet:** `data/style.css`, loaded by AdwApplication by

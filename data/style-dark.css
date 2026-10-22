@@ -1,0 +1,7 @@
+/* style-dark.css — added on top of style.css while the dark style is on.
+ * AdwApplication loads it by itself, like style.css. */
+
+/* The logo's own amber for icon accents (see style.css). */
+window.palang-window {
+  -gtk-icon-palette: warning #f5b041;
+}

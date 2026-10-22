@@ -17,7 +17,8 @@ match the theme, so the same file works in light and dark:
   (`#2e3436` is only what an SVG viewer shows).
 - A shape with `class="warning"` gets the theme's warning colour (amber),
   `class="error"` its error colour (red), `class="success"` green. That is
-  how the icons have an amber accent. It also works where no style
+  how the icons have an amber accent. Palang sets that colour to the
+  logo's amber (`data/style.css`, `style-dark.css`). It also works where no style
   applies, e.g. the editor's gutter, which is why the gutter's error and
   warning icons are now red and amber.
 - Use filled shapes, not strokes: GTK recolours fills only. Holes come

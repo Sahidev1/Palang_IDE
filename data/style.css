@@ -65,3 +65,12 @@ window.palang-window.csd.tiled-bottom {
   padding: 0;
   box-shadow: none;
 }
+
+/* Icon accents in the logo's amber instead of libadwaita's warning color.
+ * A symbolic icon's class="warning" parts take the "warning" color of the
+ * icon palette (data/icons/README.md); the palette is inherited, so this
+ * covers every icon in the window, real warning icons too. This is the
+ * deeper amber for light mode; style-dark.css has the bright one. */
+window.palang-window {
+  -gtk-icon-palette: warning #c37d0d;
+}
