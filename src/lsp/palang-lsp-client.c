@@ -244,7 +244,7 @@ on_initialize_replied (GObject      *source,
 /* The "initialize" request: who we are, the project folder, and what we
  * can handle ("client capabilities"): document sync with save,
  * diagnostics, go to definition, hover (Markdown preferred), completion
- * (plain text for now; snippets come in 2c.3). */
+ * (with snippets; documentation and more on request: "resolveSupport"). */
 static void
 send_initialize (PalangLspClient *self)
 {
@@ -279,7 +279,18 @@ send_initialize (PalangLspClient *self)
         "completion", "{",
           "contextSupport", JSONRPC_MESSAGE_PUT_BOOLEAN (TRUE),
           "completionItem", "{",
-            "snippetSupport", JSONRPC_MESSAGE_PUT_BOOLEAN (FALSE),
+            "snippetSupport", JSONRPC_MESSAGE_PUT_BOOLEAN (TRUE),
+            "documentationFormat", "[",
+              JSONRPC_MESSAGE_PUT_STRING ("markdown"),
+              JSONRPC_MESSAGE_PUT_STRING ("plaintext"),
+            "]",
+            "resolveSupport", "{",
+              "properties", "[",
+                JSONRPC_MESSAGE_PUT_STRING ("documentation"),
+                JSONRPC_MESSAGE_PUT_STRING ("detail"),
+                JSONRPC_MESSAGE_PUT_STRING ("additionalTextEdits"),
+              "]",
+            "}",
           "}",
         "}",
         "hover", "{",

@@ -43,8 +43,27 @@ const char *palang_lsp_completion_item_get_detail       (PalangLspCompletionItem
  * ("Function", "Variable", "Keyword"). */
 const char *palang_lsp_completion_item_get_kind_name    (PalangLspCompletionItem *self);
 
-/* Returns: (transfer none): the text to insert. */
+/* Returns: (transfer none): the text it inserts (for a snippet: with
+ * each place to fill in holding its default text). */
 const char *palang_lsp_completion_item_get_new_text     (PalangLspCompletionItem *self);
+
+/* Returns: (transfer none) (nullable): its documentation, as Markdown
+ * (palang-lsp-markdown.h). Some servers send it only on request: see
+ * is_resolved (). */
+const char *palang_lsp_completion_item_get_documentation (PalangLspCompletionItem *self);
+
+/* Returns: (transfer none): the CompletionItem exactly as the server sent
+ * it: what "completionItem/resolve" asks about. */
+GVariant   *palang_lsp_completion_item_get_raw          (PalangLspCompletionItem *self);
+
+/* Returns: TRUE once apply_resolved () was called. */
+gboolean    palang_lsp_completion_item_is_resolved      (PalangLspCompletionItem *self);
+
+/* Takes in the answer to "completionItem/resolve" (@resolved: nullable,
+ * the full CompletionItem): its detail, documentation and extra edits
+ * replace ours where it has them. */
+void        palang_lsp_completion_item_apply_resolved   (PalangLspCompletionItem *self,
+                                                         GVariant                *resolved);
 
 /* Matches the item against @casefold_typed (what was typed, run through
  * g_utf8_casefold ()) and remembers the result for get_score ().
@@ -62,13 +81,14 @@ guint       palang_lsp_completion_item_get_score        (PalangLspCompletionItem
 int         palang_lsp_completion_item_compare          (PalangLspCompletionItem *a,
                                                          PalangLspCompletionItem *b);
 
-/* Inserts the item for the word from @word_start to @cursor in @buffer:
- * the word is replaced with get_new_text () (from where the server says,
- * if it did: "textEdit"), and the server's other edits are made too
- * ("additionalTextEdits", e.g. an #include clangd adds). One user action:
- * one Ctrl+Z undoes it all. */
+/* Inserts the item for the word from @word_start to @cursor in @view:
+ * the word is replaced (from where the server says, if it did:
+ * "textEdit"), and the server's other edits are made too
+ * ("additionalTextEdits", e.g. an #include clangd adds). A snippet is
+ * inserted as one, so Tab moves through its places to fill in. One user
+ * action: one Ctrl+Z undoes it all. */
 void        palang_lsp_completion_item_insert           (PalangLspCompletionItem *self,
-                                                         GtkTextBuffer           *buffer,
+                                                         GtkSourceView           *view,
                                                          const GtkTextIter       *word_start,
                                                          const GtkTextIter       *cursor);
 

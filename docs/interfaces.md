@@ -137,13 +137,14 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 
 | Header | Use it for |
 |---|---|
-| `palang-lsp-manager.h` | **PalangLspManager**, the language servers of one window: property `folder`; `add_document ()` / `remove_document ()` for every tab; `add_view ()` for its view (gutter icons, hover); `restart ()`; `get_client ()` / `get_lsp_document ()` for a document; `find_definition_async ()`, `hover_async ()` (Markdown), `complete_async ()`. Signal `server-failed (message)`. **Start here.** |
+| `palang-lsp-manager.h` | **PalangLspManager**, the language servers of one window: property `folder`; `add_document ()` / `remove_document ()` for every tab; `add_view ()` for its view (gutter icons, hover); `restart ()`; `get_client ()` / `get_lsp_document ()` for a document; `find_definition_async ()`, `hover_async ()` (Markdown), `complete_async ()`, `resolve_completion_async ()`. Signal `server-failed (message)`. **Start here.** |
 | `palang-lsp-client.h` | **PalangLspClient**, one server process: `start`, `stop` (polite, then killed after 2 s; holds the app), `call_async` (requests), `notify` (notifications), `get_capabilities ()`, `get_sync_kind ()`. Signals `ready` (also after each restart), `failed (message)`, `notification (method, params)`. |
 | `palang-lsp-document.h` | **PalangLspDocument**, one document as its server sees it: the sync (didOpen/didChange/didSave/didClose), `get_version ()`, `get_uri ()`, diagnostics (`set_diagnostics ()`, `dup_messages_at ()`). |
 | `palang-lsp-diagnostics.h` | Shows diagnostics in a buffer (tags, gutter marks, messages by position); used by PalangLspDocument. |
 | `palang-lsp-hover-provider.h` | **PalangLspHoverProvider**, the `GtkSourceHoverProvider` (async): diagnostic messages, then the server's hover text. |
 | `palang-lsp-completion-provider.h` | **PalangLspCompletionProvider**, the `GtkSourceCompletionProvider`: asks the server while typing, after its trigger characters and on Ctrl+Space; filters and sorts by what is typed; asks again while the server's list is incomplete. |
-| `palang-lsp-completion-item.h` | **PalangLspCompletionItem**, one entry (a `GtkSourceCompletionProposal`): label, detail, kind, fuzzy `match ()`/`compare ()`, `insert ()` (textEdit, additionalTextEdits, one undo step). |
+| `palang-lsp-completion-item.h` | **PalangLspCompletionItem**, one entry (a `GtkSourceCompletionProposal`): label, detail, kind, documentation (Markdown), fuzzy `match ()`/`compare ()`, `insert ()` into a view (textEdit, additionalTextEdits, snippets with Tab stops, one undo step), `apply_resolved ()`. |
+| `palang-lsp-snippet.h` | LSP snippet syntax (`${1:text}`, `$0`, choices, escapes) → parts (text / tab stops), and → plain text. Pure, unit-tested. |
 | `palang-lsp-markdown.h` | The servers' Markdown → Pango markup for a GtkLabel (code, headings, emphasis; the rest as plain text); `_escape ()` for plain-text answers. Use it for completion documentation too. |
 | `palang-lsp-position.h` | Editor characters ↔ LSP UTF-16 units: pure functions and iter wrappers. **Every** position to or from a server goes through these. |
 | `palang-lsp-languages.h` | GtkSourceView language id → server (key, title, install hint) and LSP language id. Add a language here. |
@@ -179,9 +180,13 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 - **Phase 3 (AI completion)** can be a second `GtkSourceCompletionProvider`
   on the same view, or ghost text beside it; `add_view ()` sets the
   view's completion to `select-on-show` and hides icons.
-- **Rest of 2c:** snippets and the documentation pane
-  (`completionItem/resolve`); a Problems page would listen for diagnostics
-  changes (a new signal on PalangLspManager) and be added with
+- **Snippets:** `add_view ()` turns on the view's `enable-snippets` (Tab
+  moves through a snippet's places) and empties GtkSourceView's own
+  snippet library (CLAUDE.md gotcha 17). The Details pane asks the server
+  for documentation (`completionItem/resolve`) when an entry is shown
+  there.
+- **Rest of 2c:** a Problems page would listen for diagnostics changes (a
+  new signal on PalangLspManager) and be added with
   `palang_panel_add_page ()`.
 - **Phase 3 (ghost text) must not reach servers:** didChange is sent from
   `insert-text`/`delete-range`, so ghost text has to be shown without

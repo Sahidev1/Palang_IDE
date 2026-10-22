@@ -335,6 +335,7 @@ void
 palang_lsp_manager_add_view (PalangLspManager *self,
                              GtkSourceView    *view)
 {
+  static const char * const no_snippet_folders[] = { NULL };
   g_autoptr (PalangLspHoverProvider) hover_provider = NULL;
   g_autoptr (PalangLspCompletionProvider) completion_provider = NULL;
   GtkSourceCompletion *completion;
@@ -351,12 +352,24 @@ palang_lsp_manager_add_view (PalangLspManager *self,
 
   /* Completion likewise. "select-on-show": the first entry is selected
    * when the popup opens, so Enter or Tab takes it (as in most editors);
-   * our entries have no icons, so no room is kept for them. */
+   * our entries have no icons, so no room is kept for them; once opened,
+   * the Details pane stays open for the next popups. */
+  /* Snippets from servers (function arguments to fill in) move on with
+   * Tab only when the view's "enable-snippets" is on. That also expands
+   * GtkSourceView's own snippet files (typing "mit" + Tab would paste the
+   * MIT license), which Palang doesn't offer: an empty search path leaves
+   * that library empty. The snippet manager is shared by the whole
+   * application; setting the same path again does nothing new. */
+  g_object_set (view, "enable-snippets", TRUE, NULL);
+  gtk_source_snippet_manager_set_search_path (gtk_source_snippet_manager_get_default (),
+                                              no_snippet_folders);
+
   completion = gtk_source_view_get_completion (view);
   completion_provider = palang_lsp_completion_provider_new (self, view);
   gtk_source_completion_add_provider (completion,
                                       GTK_SOURCE_COMPLETION_PROVIDER (completion_provider));
-  g_object_set (completion, "select-on-show", TRUE, "show-icons", FALSE, NULL);
+  g_object_set (completion, "select-on-show", TRUE, "show-icons", FALSE,
+                "remember-info-visibility", TRUE, NULL);
 }
 
 PalangLspDocument *
@@ -922,6 +935,89 @@ palang_lsp_manager_complete_finish (PalangLspManager  *self,
     *is_incomplete = found->incomplete;
   completion_result_free (found);
   return items;
+}
+
+/* The answer to "completionItem/resolve": the full CompletionItem. */
+static void
+on_resolve_replied (GObject      *source,
+                    GAsyncResult *result,
+                    gpointer      user_data)
+{
+  g_autoptr (GTask) task = user_data;
+  g_autoptr (GError) error = NULL;
+  GVariant *reply;
+
+  reply = palang_lsp_client_call_finish (PALANG_LSP_CLIENT (source), result, &error);
+  if (error != NULL)
+    g_task_return_error (task, g_steal_pointer (&error));
+  else
+    g_task_return_pointer (task, reply, (GDestroyNotify) g_variant_unref);
+}
+
+/* Returns: TRUE if @client's server answers "completionItem/resolve"
+ * ("completionProvider": {"resolveProvider": true}). */
+static gboolean
+client_resolves_completion (PalangLspClient *client)
+{
+  GVariant *capabilities = palang_lsp_client_get_capabilities (client);
+  g_autoptr (GVariant) options = NULL;
+  gboolean resolves = FALSE;
+
+  if (capabilities != NULL)
+    options = g_variant_lookup_value (capabilities, "completionProvider", G_VARIANT_TYPE_VARDICT);
+  if (options != NULL)
+    g_variant_lookup (options, "resolveProvider", "b", &resolves);
+  return resolves;
+}
+
+void
+palang_lsp_manager_resolve_completion_async (PalangLspManager    *self,
+                                             PalangDocument      *document,
+                                             GVariant            *item,
+                                             GCancellable        *cancellable,
+                                             GAsyncReadyCallback  callback,
+                                             gpointer             user_data)
+{
+  g_autoptr (GTask) task = NULL;
+  PalangLspDocument *lsp_document;
+  PalangLspClient *client;
+
+  g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
+  g_return_if_fail (PALANG_IS_DOCUMENT (document));
+  g_return_if_fail (item != NULL);
+
+  task = g_task_new (self, cancellable, callback, user_data);
+  lsp_document = find_lsp_document (self, document, NULL);
+  client = lsp_document != NULL ? palang_lsp_document_get_client (lsp_document) : NULL;
+
+  if (client == NULL || !palang_lsp_document_is_open (lsp_document))
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
+                               "No language server has this file open");
+      return;
+    }
+
+  if (!client_resolves_completion (client))
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                               "The %s language server doesn't offer this",
+                               palang_lsp_client_get_title (client));
+      return;
+    }
+
+  /* Not about a position: the params are the item itself, as it came. */
+  palang_lsp_client_call_async (client, "completionItem/resolve", item, cancellable,
+                                on_resolve_replied, g_steal_pointer (&task));
+}
+
+GVariant *
+palang_lsp_manager_resolve_completion_finish (PalangLspManager  *self,
+                                              GAsyncResult      *result,
+                                              GError           **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
 }
 
 /* ---- Folder ------------------------------------------------------------- */

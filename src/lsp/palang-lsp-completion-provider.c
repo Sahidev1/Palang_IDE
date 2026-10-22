@@ -28,9 +28,16 @@
 
 #include "palang-lsp-completion-item.h"
 #include "palang-lsp-completion-provider.h"
+#include "palang-lsp-markdown.h"
 
 /* The name under which a model's Results are attached to it. */
 #define RESULTS_KEY "palang-lsp-results"
+
+/* How much of an entry's detail is shown after its label. */
+#define MAX_DETAIL_CHARS 40
+
+/* The name under which the Details cell remembers which entry it shows. */
+#define DETAILS_ITEM_KEY "palang-lsp-item"
 
 struct _PalangLspCompletionProvider
 {
@@ -43,6 +50,10 @@ struct _PalangLspCompletionProvider
   GtkSourceView *view;   /* weak pointer: the view we complete in */
   GListModel    *shown;  /* owned, nullable: the list of the last completion */
   gboolean       moved;  /* the selection was moved in it */
+
+  /* The entry whose details are being asked for (only compared, never
+   * used), so moving back and forth doesn't ask twice. */
+  gpointer       resolving;
 };
 
 static void completion_provider_iface_init (GtkSourceCompletionProviderInterface *iface);
@@ -341,11 +352,143 @@ palang_lsp_completion_provider_refilter (GtkSourceCompletionProvider *provider,
                                      results->asking, on_asked_again, g_object_ref (model));
 }
 
+/* ---- The Details pane --------------------------------------------------- */
+
+/* Returns: (transfer floating): @markup in a label that wraps at about
+ * 60 characters and scrolls beyond 300 pixels. The cell's own label
+ * doesn't wrap: a long sentence of documentation would make the pane too
+ * wide to be placed, and GTK then doesn't show it at all. */
+static GtkWidget *
+new_details_widget (const char *markup)
+{
+  GtkWidget *label = gtk_label_new (NULL);
+  GtkWidget *scrolled = gtk_scrolled_window_new ();
+
+  gtk_label_set_markup (GTK_LABEL (label), markup);
+  gtk_label_set_wrap (GTK_LABEL (label), TRUE);
+  gtk_label_set_wrap_mode (GTK_LABEL (label), PANGO_WRAP_WORD_CHAR);
+  gtk_label_set_max_width_chars (GTK_LABEL (label), 60);
+  gtk_label_set_xalign (GTK_LABEL (label), 0);
+
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled), GTK_POLICY_NEVER,
+                                  GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (scrolled), TRUE);
+  gtk_scrolled_window_set_propagate_natural_height (GTK_SCROLLED_WINDOW (scrolled), TRUE);
+  gtk_scrolled_window_set_max_content_height (GTK_SCROLLED_WINDOW (scrolled), 300);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled), label);
+  return scrolled;
+}
+
+/* Fills @cell with @item's detail (often a signature, in monospace) and
+ * its documentation. If there is nothing yet but the server was asked
+ * (@waiting), it says so: an empty cell keeps the pane closed, and filling
+ * it later doesn't open it again. */
+static void
+set_details (GtkSourceCompletionCell *cell,
+             PalangLspCompletionItem *item,
+             gboolean                 waiting)
+{
+  const char *detail = palang_lsp_completion_item_get_detail (item);
+  const char *documentation = palang_lsp_completion_item_get_documentation (item);
+  g_autoptr (GString) markup = g_string_new (NULL);
+
+  if (detail != NULL)
+    {
+      g_autofree char *escaped = g_markup_escape_text (detail, -1);
+
+      g_string_append_printf (markup, "<tt>%s</tt>", escaped);
+    }
+
+  if (documentation != NULL)
+    {
+      g_autofree char *converted = palang_lsp_markdown_to_markup (documentation);
+
+      if (markup->len > 0 && converted[0] != '\0')
+        g_string_append (markup, "\n\n");
+      g_string_append (markup, converted);
+    }
+
+  if (markup->len > 0)
+    gtk_source_completion_cell_set_widget (cell, new_details_widget (markup->str));
+  else
+    gtk_source_completion_cell_set_text (cell, waiting ? "Loading…" : NULL);
+}
+
+/* What the answer to a "completionItem/resolve" needs. */
+typedef struct {
+  PalangLspCompletionProvider *self;  /* owned */
+  PalangLspCompletionItem     *item;  /* owned */
+  GtkSourceCompletionCell     *cell;  /* owned */
+} Resolving;
+
+static void
+on_resolved (GObject      *source,
+             GAsyncResult *result,
+             gpointer      user_data)
+{
+  Resolving *resolving = user_data;
+  g_autoptr (GVariant) resolved = NULL;
+
+  /* On error the entry just keeps what it has; it counts as resolved
+   * either way, so we don't ask again. */
+  resolved = palang_lsp_manager_resolve_completion_finish (PALANG_LSP_MANAGER (source), result,
+                                                           NULL);
+  palang_lsp_completion_item_apply_resolved (resolving->item, resolved);
+
+  /* The pane may show another entry by now. */
+  if (g_object_get_data (G_OBJECT (resolving->cell), DETAILS_ITEM_KEY) == resolving->item)
+    set_details (resolving->cell, resolving->item, FALSE);
+
+  if (resolving->self->resolving == resolving->item)
+    resolving->self->resolving = NULL;
+
+  g_object_unref (resolving->self);
+  g_object_unref (resolving->item);
+  g_object_unref (resolving->cell);
+  g_free (resolving);
+}
+
+/* The Details pane shows @item: what we have now, and, if the server
+ * sends documentation only on request, ask for it. */
+static void
+show_details (PalangLspCompletionProvider *self,
+              GtkSourceCompletionContext  *context,
+              PalangLspCompletionItem     *item,
+              GtkSourceCompletionCell     *cell)
+{
+  GtkSourceBuffer *buffer = gtk_source_completion_context_get_buffer (context);
+  PalangLspClient *client = client_for_buffer (self, GTK_TEXT_BUFFER (buffer));
+  Resolving *resolving;
+
+  gboolean ask;
+
+  /* Ask the server for the rest, unless that was done (or is under way)
+   * or there is no server. */
+  ask = client != NULL && !palang_lsp_completion_item_is_resolved (item) &&
+        self->resolving != item;
+
+  g_object_set_data_full (G_OBJECT (cell), DETAILS_ITEM_KEY, g_object_ref (item), g_object_unref);
+  set_details (cell, item, ask || self->resolving == item);
+
+  if (!ask)
+    return;
+
+  resolving = g_new0 (Resolving, 1);
+  resolving->self = g_object_ref (self);
+  resolving->item = g_object_ref (item);
+  resolving->cell = g_object_ref (cell);
+  self->resolving = item;
+
+  palang_lsp_manager_resolve_completion_async (self->manager, PALANG_DOCUMENT (buffer),
+                                               palang_lsp_completion_item_get_raw (item), NULL,
+                                               on_resolved, resolving);
+}
+
 /* ---- Showing and inserting ---------------------------------------------- */
 
 /* A row of the popup has columns (GtkSourceCompletionColumn); we fill
- * three: the label with the typed letters in bold, the detail (often a
- * type) after it, and the kind ("Function") at the end. */
+ * the label with the typed letters in bold, the detail (often a type)
+ * after it, the kind ("Function") at the end, and the Details pane. */
 static void
 palang_lsp_completion_provider_display (GtkSourceCompletionProvider *provider,
                                         GtkSourceCompletionContext  *context,
@@ -368,11 +511,29 @@ palang_lsp_completion_provider_display (GtkSourceCompletionProvider *provider,
       break;
 
     case GTK_SOURCE_COMPLETION_COLUMN_AFTER:
-      gtk_source_completion_cell_set_text (cell, palang_lsp_completion_item_get_detail (item));
+      {
+        /* A detail can be a whole signature (typescript's are), which
+         * would make the popup as wide as the window: cut it short here;
+         * the Details pane shows all of it. */
+        const char *detail = palang_lsp_completion_item_get_detail (item);
+        g_autofree char *shortened = NULL;
+
+        if (detail != NULL && g_utf8_strlen (detail, -1) > MAX_DETAIL_CHARS)
+          {
+            g_autofree char *start = g_utf8_substring (detail, 0, MAX_DETAIL_CHARS - 1);
+
+            shortened = g_strconcat (start, "…", NULL);
+          }
+        gtk_source_completion_cell_set_text (cell, shortened != NULL ? shortened : detail);
+      }
       break;
 
     case GTK_SOURCE_COMPLETION_COLUMN_COMMENT:
       gtk_source_completion_cell_set_text (cell, palang_lsp_completion_item_get_kind_name (item));
+      break;
+
+    case GTK_SOURCE_COMPLETION_COLUMN_DETAILS:
+      show_details (PALANG_LSP_COMPLETION_PROVIDER (provider), context, item, cell);
       break;
 
     default:
@@ -388,12 +549,11 @@ palang_lsp_completion_provider_activate (GtkSourceCompletionProvider *provider,
                                          GtkSourceCompletionContext  *context,
                                          GtkSourceCompletionProposal *proposal)
 {
-  GtkSourceBuffer *buffer = gtk_source_completion_context_get_buffer (context);
+  GtkSourceView *view = gtk_source_completion_context_get_view (context);
   GtkTextIter begin, end;
 
   if (gtk_source_completion_context_get_bounds (context, &begin, &end))
-    palang_lsp_completion_item_insert (PALANG_LSP_COMPLETION_ITEM (proposal),
-                                       GTK_TEXT_BUFFER (buffer), &begin, &end);
+    palang_lsp_completion_item_insert (PALANG_LSP_COMPLETION_ITEM (proposal), view, &begin, &end);
 }
 
 static char *
@@ -406,11 +566,12 @@ palang_lsp_completion_provider_get_title (GtkSourceCompletionProvider *provider)
 
 /* The popup opens with its first entry selected, so Enter or Tab takes it.
  * But after typing a whole word ("return"), the first entry is often that
- * very word, and Enter should start a new line, not "insert" what is
- * there already. So when the popup is open, the selection wasn't moved,
- * and the text before the cursor already is the first entry's text, Enter
- * closes the popup and goes on to the text view. Tab still takes the
- * entry.
+ * very word, and Enter should start a new line, not insert the entry
+ * (for a snippet like "return ${1:expression};" that would even add
+ * text). So when the selection wasn't moved, and the word before the
+ * cursor already is the word the first entry completes (its filter
+ * text), Enter closes the popup and goes on to the text view. Tab still
+ * takes the entry.
  *
  * GtkSourceView doesn't tell which entry is selected, nor when its popup
  * opens and closes (its "show" and "hide" signals are requests, not
@@ -426,15 +587,15 @@ is_word_character (gunichar ch)
   return g_unichar_isalnum (ch) || ch == '_';
 }
 
-/* Returns: TRUE if the whole word before the cursor already is the text
- * the first entry would insert. */
+/* Returns: TRUE if the whole word before the cursor already is the word
+ * the first entry completes. */
 static gboolean
 first_entry_is_typed (PalangLspCompletionProvider *self)
 {
   GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (self->view));
   g_autoptr (PalangLspCompletionItem) first = NULL;
   g_autofree char *before = NULL;
-  const char *new_text;
+  const char *word;
   GtkTextIter start, cursor, previous;
 
   if (self->shown == NULL)
@@ -444,14 +605,14 @@ first_entry_is_typed (PalangLspCompletionProvider *self)
   if (first == NULL)
     return FALSE;
 
-  new_text = palang_lsp_completion_item_get_new_text (first);
+  word = palang_lsp_completion_item_get_filter_text (first);
   gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
   start = cursor;
-  if (!gtk_text_iter_backward_chars (&start, g_utf8_strlen (new_text, -1)))
+  if (!gtk_text_iter_backward_chars (&start, g_utf8_strlen (word, -1)))
     return FALSE;
 
   before = gtk_text_iter_get_text (&start, &cursor);
-  if (!g_str_equal (before, new_text))
+  if (!g_str_equal (before, word))
     return FALSE;
 
   /* "xreturn" isn't the word "return". */

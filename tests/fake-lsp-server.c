@@ -46,7 +46,10 @@
  *                              textEdit replacing the character before the
  *                              position) and "beta" (sorted first, with an
  *                              additionalTextEdit adding "#include <b.h>\n"
- *                              at the top); without it no completion
+ *                              at the top); without it no completion.
+ *                              Also answers completionItem/resolve with
+ *                              the item plus documentation "**resolved**
+ *                              LABEL" (Markdown)
  *   --slow                     answer definition and hover after 300 ms
  *
  * Requests it answers: "initialize", "shutdown", "textDocument/definition"
@@ -269,7 +272,8 @@ on_handle_call (JsonrpcClient *rpc,
           g_autoptr (GVariantDict) dict = g_variant_dict_new (capabilities);
           g_autoptr (GVariantDict) reply_dict = g_variant_dict_new (reply);
           g_autoptr (GVariant) options = JSONRPC_MESSAGE_NEW (
-            "triggerCharacters", "[", JSONRPC_MESSAGE_PUT_STRING ("."), "]");
+            "triggerCharacters", "[", JSONRPC_MESSAGE_PUT_STRING ("."), "]",
+            "resolveProvider", JSONRPC_MESSAGE_PUT_BOOLEAN (TRUE));
 
           g_variant_dict_insert_value (dict, "completionProvider", options);
           g_variant_dict_insert_value (reply_dict, "capabilities", g_variant_dict_end (dict));
@@ -316,6 +320,24 @@ on_handle_call (JsonrpcClient *rpc,
         }
       else
         jsonrpc_client_reply_async (rpc, id, reply, NULL, NULL, NULL);
+    }
+  else if (g_str_equal (method, "completionItem/resolve") && complete)
+    {
+      /* The item as it came, with documentation added. */
+      const char *label = "";
+      g_autofree char *text = NULL;
+      g_autoptr (GVariantDict) dict = g_variant_dict_new (params);
+      g_autoptr (GVariant) documentation = NULL;
+      g_autoptr (GVariant) reply = NULL;
+
+      g_variant_dict_lookup (dict, "label", "&s", &label);
+      text = g_strdup_printf ("**resolved** %s", label);
+      documentation = JSONRPC_MESSAGE_NEW (
+        "kind", JSONRPC_MESSAGE_PUT_STRING ("markdown"),
+        "value", JSONRPC_MESSAGE_PUT_STRING (text));
+      g_variant_dict_insert_value (dict, "documentation", documentation);
+      reply = g_variant_ref_sink (g_variant_dict_end (dict));
+      jsonrpc_client_reply_async (rpc, id, reply, NULL, NULL, NULL);
     }
   else if (g_str_equal (method, "fake/echo"))
     {

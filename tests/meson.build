@@ -100,4 +100,9 @@ test_lsp = executable('test-lsp',
   include_directories: [config_inc, palang_inc],
   c_args: ['-DFAKE_LSP_SERVER="@0@"'.format(fake_lsp_server.full_path())],
 )
-test('lsp', test_lsp, env: test_env, depends: fake_lsp_server)
+# It creates GtkSourceViews (snippet insertion), so it needs a display too.
+if xvfb_run.found()
+  test('lsp', xvfb_run, args: ['-a', test_lsp], env: test_env, depends: fake_lsp_server)
+else
+  test('lsp', test_lsp, env: test_env, depends: fake_lsp_server)
+endif

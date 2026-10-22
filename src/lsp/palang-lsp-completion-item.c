@@ -5,6 +5,11 @@
  * they are read with g_variant_lookup (), which leaves the variable alone
  * when the key is missing or holds another type. Strings are copied: the
  * item outlives the server's message.
+ *
+ * Some servers send only a short version of each entry and the rest
+ * (documentation, sometimes the detail) on request ("completionItem/
+ * resolve", with the entry exactly as it came: get_raw ()). The answer
+ * is taken in with apply_resolved ().
  */
 
 #include "config.h"
@@ -12,7 +17,9 @@
 #include <jsonrpc-glib.h>
 
 #include "palang-lsp-completion-item.h"
+#include "palang-lsp-markdown.h"
 #include "palang-lsp-position.h"
+#include "palang-lsp-snippet.h"
 
 struct _PalangLspCompletionItem
 {
@@ -23,7 +30,12 @@ struct _PalangLspCompletionItem
   char     *sort_text;         /* owned */
   char     *detail;            /* owned, nullable */
   gint64    kind;              /* LSP CompletionItemKind, 0 if not given */
-  char     *new_text;          /* owned */
+  char     *new_text;          /* owned: as the server wrote it */
+  gboolean  is_snippet;        /* new_text is in snippet syntax */
+  char     *plain_text;        /* owned: what new_text inserts as text */
+  char     *documentation;     /* owned, nullable: Markdown */
+  GVariant *raw;               /* owned: the CompletionItem as it came */
+  gboolean  resolved;          /* apply_resolved () was called */
   gboolean  has_edit_start;
   guint     edit_line;
   guint     edit_character;
@@ -54,6 +66,33 @@ dup_string (GVariant   *item,
   if (!g_variant_lookup (item, key, "&s", &value))
     return NULL;
   return g_strdup (value);
+}
+
+/* "documentation": plain text, or MarkupContent {"kind", "value"}.
+ * Returns: (transfer full) (nullable): it as Markdown. */
+static char *
+read_documentation (GVariant *item)
+{
+  g_autoptr (GVariant) documentation = g_variant_lookup_value (item, "documentation", NULL);
+  const char *kind = NULL;
+  const char *value = NULL;
+
+  if (documentation == NULL)
+    return NULL;
+
+  if (g_variant_is_of_type (documentation, G_VARIANT_TYPE_STRING))
+    value = g_variant_get_string (documentation, NULL);
+  else if (!g_variant_is_of_type (documentation, G_VARIANT_TYPE_VARDICT) ||
+           !JSONRPC_MESSAGE_PARSE (documentation,
+                                   "kind", JSONRPC_MESSAGE_GET_STRING (&kind),
+                                   "value", JSONRPC_MESSAGE_GET_STRING (&value)))
+    return NULL;
+
+  if (value[0] == '\0')
+    return NULL;
+  if (g_strcmp0 (kind, "markdown") == 0)
+    return g_strdup (value);
+  return palang_lsp_markdown_escape (value);  /* plain text shows as it is */
 }
 
 /* "textEdit": {"range": {"start": …, "end": …}, "newText": "…"}. Takes
@@ -91,6 +130,7 @@ palang_lsp_completion_item_new (GVariant *item)
 {
   PalangLspCompletionItem *self;
   const char *label = NULL;
+  gint64 format = 1;
 
   g_return_val_if_fail (item != NULL, NULL);
 
@@ -115,14 +155,21 @@ palang_lsp_completion_item_new (GVariant *item)
     self->sort_text = g_strdup (self->label);
 
   self->detail = dup_string (item, "detail");
+  self->documentation = read_documentation (item);
+  self->raw = g_variant_ref (item);
   g_variant_lookup (item, "kind", "x", &self->kind);
 
   /* What to insert: the textEdit's text, else insertText, else the
-   * label. */
+   * label. insertTextFormat 2 means it is a snippet. */
   self->new_text = dup_string (item, "insertText");
   if (self->new_text == NULL)
     self->new_text = g_strdup (self->label);
   read_text_edit (self, item);
+
+  if (g_variant_lookup (item, "insertTextFormat", "x", &format) && format == 2)
+    self->is_snippet = TRUE;
+  self->plain_text = self->is_snippet ? palang_lsp_snippet_to_text (self->new_text)
+                                      : g_strdup (self->new_text);
 
   self->additional_edits = g_variant_lookup_value (item, "additionalTextEdits",
                                                    G_VARIANT_TYPE ("av"));
@@ -176,7 +223,68 @@ palang_lsp_completion_item_get_new_text (PalangLspCompletionItem *self)
 {
   g_return_val_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (self), NULL);
 
-  return self->new_text;
+  return self->plain_text;
+}
+
+const char *
+palang_lsp_completion_item_get_documentation (PalangLspCompletionItem *self)
+{
+  g_return_val_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (self), NULL);
+
+  return self->documentation;
+}
+
+GVariant *
+palang_lsp_completion_item_get_raw (PalangLspCompletionItem *self)
+{
+  g_return_val_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (self), NULL);
+
+  return self->raw;
+}
+
+gboolean
+palang_lsp_completion_item_is_resolved (PalangLspCompletionItem *self)
+{
+  g_return_val_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (self), FALSE);
+
+  return self->resolved;
+}
+
+void
+palang_lsp_completion_item_apply_resolved (PalangLspCompletionItem *self,
+                                           GVariant                *resolved)
+{
+  char *detail;
+  char *documentation;
+  GVariant *edits;
+
+  g_return_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (self));
+
+  self->resolved = TRUE;
+  if (resolved == NULL || !g_variant_is_of_type (resolved, G_VARIANT_TYPE_VARDICT))
+    return;
+
+  /* Only what the answer has replaces what we had. */
+  detail = dup_string (resolved, "detail");
+  if (detail != NULL)
+    {
+      g_free (self->detail);
+      self->detail = detail;
+    }
+
+  documentation = read_documentation (resolved);
+  if (documentation != NULL)
+    {
+      g_free (self->documentation);
+      self->documentation = documentation;
+    }
+
+  edits = g_variant_lookup_value (resolved, "additionalTextEdits", G_VARIANT_TYPE ("av"));
+  if (edits != NULL)
+    {
+      g_clear_pointer (&self->additional_edits, g_variant_unref);
+      self->additional_edits = edits;
+    }
 }
 
 gboolean
@@ -249,19 +357,65 @@ apply_text_edit (GtkTextBuffer *buffer,
   gtk_text_buffer_insert (buffer, &start, new_text, -1);
 }
 
+/* Returns: (transfer full): a GtkSourceSnippet for @snippet (LSP
+ * syntax), built chunk by chunk from palang_lsp_snippet_parse (). A chunk
+ * is a piece of text, or a place to fill in ("focus position" 1, 2, …;
+ * 0 is where the cursor ends; -1 means plain text). */
+static GtkSourceSnippet *
+new_source_snippet (const char *snippet)
+{
+  g_autoptr (GPtrArray) parts = palang_lsp_snippet_parse (snippet);
+  GtkSourceSnippet *source_snippet = gtk_source_snippet_new (NULL, NULL);
+  gboolean has_end = FALSE;
+
+  for (guint i = 0; i < parts->len; i++)
+    if (((PalangLspSnippetPart *) g_ptr_array_index (parts, i))->tab_stop == 0)
+      has_end = TRUE;
+
+  /* Without a $0, LSP puts the cursor at the end of the snippet after the
+   * last place to fill in; GtkSourceView needs an empty chunk there to do
+   * that (otherwise the last Tab inserts a tab). */
+  if (!has_end)
+    {
+      PalangLspSnippetPart *end = g_new0 (PalangLspSnippetPart, 1);
+
+      end->tab_stop = 0;
+      end->text = g_strdup ("");
+      g_ptr_array_add (parts, end);
+    }
+
+  for (guint i = 0; i < parts->len; i++)
+    {
+      PalangLspSnippetPart *part = g_ptr_array_index (parts, i);
+      GtkSourceSnippetChunk *chunk = gtk_source_snippet_chunk_new ();
+
+      /* "text-set": take the text as it is, don't expand it as
+       * GtkSourceView's own snippet syntax (where "$1" means something). */
+      gtk_source_snippet_chunk_set_text (chunk, part->text);
+      gtk_source_snippet_chunk_set_text_set (chunk, TRUE);
+      gtk_source_snippet_chunk_set_focus_position (chunk, part->tab_stop);
+      gtk_source_snippet_add_chunk (source_snippet, chunk);  /* takes the floating ref */
+    }
+
+  return source_snippet;
+}
+
 void
 palang_lsp_completion_item_insert (PalangLspCompletionItem *self,
-                                   GtkTextBuffer           *buffer,
+                                   GtkSourceView           *view,
                                    const GtkTextIter       *word_start,
                                    const GtkTextIter       *cursor)
 {
+  GtkTextBuffer *buffer;
   GtkTextIter begin = *word_start;
   GtkTextIter end = *cursor;
   GtkTextIter edit_start;
   GtkTextMark *start_mark, *end_mark;
 
   g_return_if_fail (PALANG_IS_LSP_COMPLETION_ITEM (self));
-  g_return_if_fail (GTK_IS_TEXT_BUFFER (buffer));
+  g_return_if_fail (GTK_SOURCE_IS_VIEW (view));
+
+  buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
 
   /* The server may say where the replaced text starts (clangd does);
    * else it is the typed word. Only a start on the same line, before the
@@ -296,7 +450,17 @@ palang_lsp_completion_item_insert (PalangLspCompletionItem *self,
   gtk_text_buffer_get_iter_at_mark (buffer, &begin, start_mark);
   gtk_text_buffer_get_iter_at_mark (buffer, &end, end_mark);
   gtk_text_buffer_delete (buffer, &begin, &end);
-  gtk_text_buffer_insert (buffer, &begin, self->new_text, -1);
+
+  /* A snippet goes in through the view, which then moves from one place
+   * to fill in to the next with Tab. */
+  if (self->is_snippet)
+    {
+      g_autoptr (GtkSourceSnippet) snippet = new_source_snippet (self->new_text);
+
+      gtk_source_view_push_snippet (view, snippet, &begin);
+    }
+  else
+    gtk_text_buffer_insert (buffer, &begin, self->new_text, -1);
 
   gtk_text_buffer_delete_mark (buffer, start_mark);
   gtk_text_buffer_delete_mark (buffer, end_mark);
@@ -313,6 +477,9 @@ palang_lsp_completion_item_finalize (GObject *object)
   g_free (self->sort_text);
   g_free (self->detail);
   g_free (self->new_text);
+  g_free (self->plain_text);
+  g_free (self->documentation);
+  g_clear_pointer (&self->raw, g_variant_unref);
   g_clear_pointer (&self->additional_edits, g_variant_unref);
 
   G_OBJECT_CLASS (palang_lsp_completion_item_parent_class)->finalize (object);

@@ -17,6 +17,7 @@
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
 #include "palang-lsp-markdown.h"
+#include "palang-lsp-snippet.h"
 #include "palang-lsp-position.h"
 
 typedef struct {
@@ -1581,7 +1582,8 @@ test_completion_item_insert (void)
     "                            \"range\": {\"start\": {\"line\": 0, \"character\": 0},"
     "                                      \"end\": {\"line\": 0, \"character\": 0}}}]}");
   g_autoptr (PalangLspCompletionItem) plain = item_from_json ("{\"label\": \"map\"}");
-  g_autoptr (GtkTextBuffer) buffer = gtk_text_buffer_new (NULL);
+  g_autoptr (GtkSourceView) view = g_object_ref_sink (GTK_SOURCE_VIEW (gtk_source_view_new ()));
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
   g_autofree char *text = NULL;
   GtkTextIter word_start, cursor, start, end;
 
@@ -1590,7 +1592,7 @@ test_completion_item_insert (void)
   gtk_text_buffer_set_text (buffer, "int x;\ns.al", -1);
   gtk_text_buffer_get_iter_at_line_offset (buffer, &word_start, 1, 3);
   gtk_text_buffer_get_end_iter (buffer, &cursor);
-  palang_lsp_completion_item_insert (with_edits, buffer, &word_start, &cursor);
+  palang_lsp_completion_item_insert (with_edits, view, &word_start, &cursor);
 
   gtk_text_buffer_get_bounds (buffer, &start, &end);
   text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
@@ -1607,11 +1609,121 @@ test_completion_item_insert (void)
   gtk_text_buffer_set_text (buffer, "xs.ma", -1);
   gtk_text_buffer_get_iter_at_offset (buffer, &word_start, 3);
   gtk_text_buffer_get_end_iter (buffer, &cursor);
-  palang_lsp_completion_item_insert (plain, buffer, &word_start, &cursor);
+  palang_lsp_completion_item_insert (plain, view, &word_start, &cursor);
 
   gtk_text_buffer_get_bounds (buffer, &start, &end);
   text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
   g_assert_cmpstr (text, ==, "xs.map");
+}
+
+/* ---- Snippets ------------------------------------------------------------ */
+
+/* Returns: (transfer full): @snippet's parts as "[stop:text]…", stop -1
+ * for plain text. */
+static char *
+describe_snippet (const char *snippet)
+{
+  g_autoptr (GPtrArray) parts = palang_lsp_snippet_parse (snippet);
+  GString *description = g_string_new (NULL);
+
+  for (guint i = 0; i < parts->len; i++)
+    {
+      PalangLspSnippetPart *part = g_ptr_array_index (parts, i);
+
+      g_string_append_printf (description, "[%d:%s]", part->tab_stop, part->text);
+    }
+
+  return g_string_free (description, FALSE);
+}
+
+static void
+assert_snippet (const char *snippet,
+                const char *expected)
+{
+  g_autofree char *description = describe_snippet (snippet);
+
+  g_assert_cmpstr (description, ==, expected);
+}
+
+/* Every form of LSP's snippet syntax, and text that only looks like it. */
+static void
+test_snippet_parse (void)
+{
+  g_autofree char *text = NULL;
+
+  assert_snippet ("printf(${1:const char *format}, $2)$0",
+                  "[-1:printf(][1:const char *format][-1:, ][2:][-1:)][0:]");
+  assert_snippet ("f(${1})", "[-1:f(][1:][-1:)]");
+  assert_snippet ("${1|one,two|} \\$5 \\} a\\b", "[1:one][-1: $5 } a\\b]");
+  assert_snippet ("${1|a\\,b,c|}", "[1:a,b]");                /* an escaped comma */
+  assert_snippet ("x${1:a${2:nested}}y", "[-1:x][1:anested][-1:y]");
+  assert_snippet ("$TM_FILENAME ${NAME:def}.", "[-1: def.]");  /* variables */
+  assert_snippet ("a $ b }", "[-1:a $ b }]");
+  assert_snippet ("${1:never closed", "[-1:${1:never closed]");
+  assert_snippet ("${unclosed", "[-1:${unclosed]");
+  assert_snippet ("", "");
+
+  text = palang_lsp_snippet_to_text ("printf(${1:fmt}, $2)$0");
+  g_assert_cmpstr (text, ==, "printf(fmt, )");
+}
+
+/* A snippet entry goes in as a snippet: its first place to fill in is
+ * selected; one undo takes it all back. */
+static void
+test_completion_item_snippet (void)
+{
+  g_autoptr (PalangLspCompletionItem) item = item_from_json (
+    "{\"label\": \"printf\", \"insertTextFormat\": 2,"
+    " \"insertText\": \"printf(${1:fmt}, ${2:args})\"}");
+  g_autoptr (GtkSourceView) view = g_object_ref_sink (GTK_SOURCE_VIEW (gtk_source_view_new ()));
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+  g_autofree char *text = NULL;
+  g_autofree char *selected = NULL;
+  GtkTextIter word_start, cursor, start, end;
+
+  g_assert_cmpstr (palang_lsp_completion_item_get_new_text (item), ==, "printf(fmt, args)");
+
+  gtk_text_buffer_set_text (buffer, "x = pri;", -1);
+  gtk_text_buffer_get_iter_at_offset (buffer, &word_start, 4);
+  gtk_text_buffer_get_iter_at_offset (buffer, &cursor, 7);
+  palang_lsp_completion_item_insert (item, view, &word_start, &cursor);
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+  g_assert_cmpstr (text, ==, "x = printf(fmt, args);");
+
+  g_assert_true (gtk_text_buffer_get_selection_bounds (buffer, &start, &end));
+  selected = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+  g_assert_cmpstr (selected, ==, "fmt");
+
+  g_clear_pointer (&text, g_free);
+  gtk_text_buffer_undo (buffer);
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+  g_assert_cmpstr (text, ==, "x = pri;");
+}
+
+/* Documentation in both forms; plain text shows as it is. */
+static void
+test_completion_item_documentation (void)
+{
+  g_autoptr (PalangLspCompletionItem) markdown = item_from_json (
+    "{\"label\": \"a\", \"documentation\": {\"kind\": \"markdown\", \"value\": \"**bold**\"}}");
+  g_autoptr (PalangLspCompletionItem) plain = item_from_json (
+    "{\"label\": \"b\", \"documentation\": \"**not bold**\"}");
+  g_autoptr (PalangLspCompletionItem) none = item_from_json ("{\"label\": \"c\"}");
+  g_autofree char *markup = NULL;
+
+  g_assert_cmpstr (palang_lsp_completion_item_get_documentation (markdown), ==, "**bold**");
+  markup = palang_lsp_markdown_to_markup (palang_lsp_completion_item_get_documentation (plain));
+  g_assert_cmpstr (markup, ==, "**not bold**");
+  g_assert_null (palang_lsp_completion_item_get_documentation (none));
+
+  /* A resolved answer fills in what was missing. */
+  g_assert_false (palang_lsp_completion_item_is_resolved (none));
+  palang_lsp_completion_item_apply_resolved (none, NULL);
+  g_assert_true (palang_lsp_completion_item_is_resolved (none));
+  g_assert_null (palang_lsp_completion_item_get_documentation (none));
 }
 
 typedef struct {
@@ -1699,6 +1811,65 @@ test_completion_request (Fixture *fixture, gconstpointer data)
   dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
 }
 
+typedef struct {
+  gboolean  done;
+  GVariant *item;
+  GError   *error;
+} ResolveAnswer;
+
+static void
+on_resolve_answered (GObject      *source,
+                     GAsyncResult *result,
+                     gpointer      user_data)
+{
+  ResolveAnswer *answer = user_data;
+
+  answer->item = palang_lsp_manager_resolve_completion_finish (PALANG_LSP_MANAGER (source), result,
+                                                               &answer->error);
+  answer->done = TRUE;
+}
+
+/* "completionItem/resolve" sends the item as it came and brings back
+ * documentation. */
+static void
+test_completion_resolve (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, "--complete");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "s.a\n");
+  g_autoptr (PalangLspCompletionItem) first = NULL;
+  g_autoptr (JsonNode) asked = NULL;
+  g_autofree char *label = NULL;
+  CompletionAnswer answer = { 0 };
+  ResolveAnswer resolved = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  complete_at (manager, document, 0, 3, 0, &answer);
+  g_assert_no_error (answer.error);
+  first = g_list_model_get_item (answer.items, 0);
+  g_assert_null (palang_lsp_completion_item_get_documentation (first));
+
+  palang_lsp_manager_resolve_completion_async (manager, document,
+                                               palang_lsp_completion_item_get_raw (first), NULL,
+                                               on_resolve_answered, &resolved);
+  wait_for_flag (&resolved.done, "the resolved item");
+  g_assert_no_error (resolved.error);
+
+  palang_lsp_completion_item_apply_resolved (first, resolved.item);
+  g_assert_cmpstr (palang_lsp_completion_item_get_documentation (first), ==, "**resolved**  alpha");
+
+  /* The server got the item exactly as it sent it (label with the space). */
+  asked = get_logged_params (fixture, "completionItem/resolve", 0);
+  label = dup_string (asked, "$.label");
+  g_assert_cmpstr (label, ==, " alpha");
+
+  g_clear_pointer (&resolved.item, g_variant_unref);
+  clear_completion_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
 /* A server without "completionProvider" isn't asked. */
 static void
 test_completion_not_supported (Fixture *fixture, gconstpointer data)
@@ -1727,7 +1898,9 @@ int
 main (int   argc,
       char *argv[])
 {
-  g_test_init (&argc, &argv, NULL);
+  /* gtk_test_init (): g_test_init () plus GTK, for the views the
+   * completion tests insert into. */
+  gtk_test_init (&argc, &argv, NULL);
   gtk_source_init ();
 
   g_test_add_func ("/lsp/languages", test_languages);
@@ -1738,6 +1911,9 @@ main (int   argc,
   g_test_add_func ("/lsp/completion/item-fields", test_completion_item_fields);
   g_test_add_func ("/lsp/completion/item-matching", test_completion_item_matching);
   g_test_add_func ("/lsp/completion/item-insert", test_completion_item_insert);
+  g_test_add_func ("/lsp/completion/item-snippet", test_completion_item_snippet);
+  g_test_add_func ("/lsp/completion/item-documentation", test_completion_item_documentation);
+  g_test_add_func ("/lsp/snippet/parse", test_snippet_parse);
 
 #define ADD_TEST(path, func) \
   g_test_add (path, Fixture, NULL, fixture_setup, func, fixture_teardown)
@@ -1776,6 +1952,7 @@ main (int   argc,
   ADD_TEST ("/lsp/hover/not-supported", test_hover_not_supported);
   ADD_TEST ("/lsp/hover/stale", test_hover_stale);
   ADD_TEST ("/lsp/completion/request", test_completion_request);
+  ADD_TEST ("/lsp/completion/resolve", test_completion_resolve);
   ADD_TEST ("/lsp/completion/not-supported", test_completion_not_supported);
 
 #undef ADD_TEST

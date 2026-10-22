@@ -121,6 +121,23 @@ GListModel       *palang_lsp_manager_complete_finish (PalangLspManager  *self,
                                                       gboolean          *is_incomplete,
                                                       GError           **error);
 
+/* Asks @document's server for the rest of a completion entry
+ * ("completionItem/resolve"): @item is the entry exactly as the server
+ * sent it (palang_lsp_completion_item_get_raw ()). Fails with
+ * G_IO_ERROR_NOT_SUPPORTED if the server sends everything up front. */
+void              palang_lsp_manager_resolve_completion_async  (PalangLspManager    *self,
+                                                                PalangDocument      *document,
+                                                                GVariant            *item,
+                                                                GCancellable        *cancellable,
+                                                                GAsyncReadyCallback  callback,
+                                                                gpointer             user_data);
+
+/* Returns: (transfer full) (nullable): the full CompletionItem; give it
+ * to palang_lsp_completion_item_apply_resolved (). NULL on error. */
+GVariant         *palang_lsp_manager_resolve_completion_finish (PalangLspManager  *self,
+                                                                GAsyncResult      *result,
+                                                                GError           **error);
+
 /* Stops every server and starts the ones the open documents need. Also
  * tries again servers that had failed. */
 void              palang_lsp_manager_restart         (PalangLspManager *self);

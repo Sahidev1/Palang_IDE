@@ -185,6 +185,15 @@ the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
     the controller on the view's parent (`palang-lsp-completion-provider.c`).
     Its `show`/`hide` signals are requests, not emitted when the popup
     opens by itself while typing.
+17. **Snippets move on with Tab only if the view's `enable-snippets` is
+    on**; that also expands GtkSourceView's own snippet files ("mit" + Tab
+    pastes a license), so `add_view ()` empties the snippet manager's
+    search path. GtkSourceView's snippet *parser* reads its own syntax, not
+    LSP's (`$1` is a reference there): `palang-lsp-snippet.c` parses LSP.
+18. **Completion Details pane:** its cell's own label doesn't wrap, and a
+    pane too wide to place isn't shown at all; give the cell a wrapped
+    widget. An empty cell keeps the pane closed, and filling it later
+    doesn't open it: show "Loading…" while asking the server.
 
 ## Memory
 
