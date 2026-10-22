@@ -44,9 +44,9 @@ static GParamSpec *properties[N_PROPS];
 
 /* ---- Looks: colors and font --------------------------------------------- */
 
-/* Matches libadwaita's colors for text views, so the terminal looks like
- * part of the window. The 16 palette colors (ls, compilers, …) stay VTE's
- * defaults. */
+/* Matches the editor's background (palang-dark's "#0f0f0f" in dark mode,
+ * data/styles/palang-dark.xml), so the terminal looks like part of the
+ * window. The 16 palette colors (ls, compilers, …) stay VTE's defaults. */
 static void
 update_colors (PalangTerminal *self)
 {
@@ -54,8 +54,8 @@ update_colors (PalangTerminal *self)
   GdkRGBA foreground;
   GdkRGBA background;
 
-  gdk_rgba_parse (&foreground, dark ? "#ffffff" : "#000000");
-  gdk_rgba_parse (&background, dark ? "#1e1e1e" : "#ffffff");
+  gdk_rgba_parse (&foreground, dark ? "#e8e8e8" : "#000000");
+  gdk_rgba_parse (&background, dark ? "#0f0f0f" : "#ffffff");
   vte_terminal_set_colors (self->vte, &foreground, &background, NULL, 0);
 }
 

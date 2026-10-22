@@ -9,6 +9,8 @@
 
 #include "config.h"
 
+#include <errno.h>
+
 #include "palang-editor.h"
 #include "palang-settings.h"
 
@@ -44,20 +46,68 @@ enum {
 
 static GParamSpec *properties[N_PROPS];
 
+/* Makes Palang's own color schemes (data/styles/, bundled in the binary)
+ * known to GtkSourceView. It can list schemes in a resource folder, but
+ * version 5.12 can't load them from there (it opens the name as a plain
+ * file), so they are copied to ~/.cache/palang/styles/ and that folder is
+ * searched instead. Small files, once per start. */
+static void
+add_palang_style_schemes (void)
+{
+  static const char *const names[] = { "palang-dark.xml" };
+  g_autofree char *folder = g_build_filename (g_get_user_cache_dir (), "palang", "styles", NULL);
+
+  if (g_mkdir_with_parents (folder, 0755) != 0)
+    {
+      g_warning ("Can't create %s: %s", folder, g_strerror (errno));
+      return;
+    }
+
+  for (gsize i = 0; i < G_N_ELEMENTS (names); i++)
+    {
+      g_autofree char *resource = g_strconcat (RESOURCE_PATH "/styles/", names[i], NULL);
+      g_autofree char *path = g_build_filename (folder, names[i], NULL);
+      g_autoptr (GBytes) bytes = NULL;
+      g_autoptr (GError) error = NULL;
+      gsize size;
+      const char *data;
+
+      bytes = g_resources_lookup_data (resource, G_RESOURCE_LOOKUP_FLAGS_NONE, &error);
+      if (bytes == NULL)
+        {
+          g_warning ("%s", error->message);
+          continue;
+        }
+
+      data = g_bytes_get_data (bytes, &size);
+      if (!g_file_set_contents (path, data, size, &error))
+        g_warning ("%s", error->message);
+    }
+
+  gtk_source_style_scheme_manager_append_search_path (gtk_source_style_scheme_manager_get_default (),
+                                                      folder);
+}
+
 static void
 update_style_scheme (PalangEditor *self)
 {
   AdwStyleManager *style_manager = adw_style_manager_get_default ();
   GtkSourceStyleSchemeManager *schemes = gtk_source_style_scheme_manager_get_default ();
   const char *scheme_id;
+  GtkSourceStyleScheme *scheme;
 
-  /* "Adwaita" and "Adwaita-dark" ship with GtkSourceView 5 and match the
-   * libadwaita look. Whether we're dark is decided by the "Style" setting
+  /* "Adwaita" ships with GtkSourceView 5 and matches the libadwaita look;
+   * "palang-dark" is ours (data/styles/palang-dark.xml): Adwaita Dark with
+   * more contrast. Whether we're dark is decided by the "Style" setting
    * (see palang-appearance.c). */
-  scheme_id = adw_style_manager_get_dark (style_manager) ? "Adwaita-dark" : "Adwaita";
+  scheme_id = adw_style_manager_get_dark (style_manager) ? "palang-dark" : "Adwaita";
+  scheme = gtk_source_style_scheme_manager_get_scheme (schemes, scheme_id);
 
-  gtk_source_buffer_set_style_scheme (GTK_SOURCE_BUFFER (self->document),
-                                      gtk_source_style_scheme_manager_get_scheme (schemes, scheme_id));
+  /* Can't happen while the scheme is in the resources; just in case. */
+  if (scheme == NULL)
+    scheme = gtk_source_style_scheme_manager_get_scheme (schemes, "Adwaita-dark");
+
+  gtk_source_buffer_set_style_scheme (GTK_SOURCE_BUFFER (self->document), scheme);
 }
 
 static void
@@ -657,6 +707,9 @@ palang_editor_class_init (PalangEditorClass *klass)
   object_class->dispose = palang_editor_dispose;
 
   widget_class->grab_focus = palang_editor_grab_focus;
+
+  /* Done once, in class_init, which runs before the first editor exists. */
+  add_palang_style_schemes ();
 
   properties[PROP_DOCUMENT] =
     g_param_spec_object ("document", NULL, NULL,

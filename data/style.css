@@ -21,6 +21,54 @@
   color: @blue_3;
 }
 
+/* ---- Contrast, and selections like VS Code ------------------------------
+ * (Colors for dark mode are in style-dark.css.) */
+
+/* Dimmed text (file paths, "clang · main.c:5", subtitles) less faded:
+ * libadwaita's is 55%. */
+.dim-label,
+windowtitle .subtitle {
+  opacity: 0.75;
+}
+
+/* Tabs: the selected one takes the editor's background, so it looks joined
+ * to the text below, with an amber line on top; the others are dimmed.
+ * No padding around the tabs, so the selected one touches the editor. */
+tabbar tabbox {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+tabbar tab {
+  min-height: 30px;
+  color: alpha(@headerbar_fg_color, 0.6);
+}
+
+tabbar tab:selected,
+tabbar tab:selected:hover,
+tabbar tab:selected:active {
+  background-color: @view_bg_color;
+  color: @view_fg_color;
+  box-shadow: inset 0 2px @accent_bg_color;
+}
+
+/* Selected rows in every list (file tree, search results, Problems,
+ * command palette): an amber tint with an amber bar on the left. */
+listview > row:selected {
+  background-color: alpha(@accent_bg_color, 0.22);
+  box-shadow: inset 2px 0 @accent_bg_color;
+}
+
+listview > row:selected:hover {
+  background-color: alpha(@accent_bg_color, 0.3);
+}
+
+/* The panel's page buttons (Terminal, Search, Problems): the shown page
+ * gets an amber line under it. */
+viewswitcher button.toggle:checked {
+  box-shadow: inset 0 -2px @accent_bg_color;
+}
+
 /* Square corners everywhere, like the window's frame below. GTK lets a
  * style provider with a higher priority win whatever its selectors are, and
  * this file is applied above libadwaita's theme, so "*" (every widget)

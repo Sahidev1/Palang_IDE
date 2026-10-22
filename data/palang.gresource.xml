@@ -3,6 +3,7 @@
   <gresource prefix="/io/github/sahidev1/Palang">
     <file>style.css</file>
     <file>style-dark.css</file>
+    <file>styles/palang-dark.xml</file>
     <!-- Palang's own icons (data/icons/README.md). GTK finds them by name
          because they sit under <resource path>/icons/. -->
     <file>icons/scalable/actions/palang-close-symbolic.svg</file>

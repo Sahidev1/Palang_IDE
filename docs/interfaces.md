@@ -70,6 +70,12 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 
 - **Rule:** all file I/O goes through `PalangDocument`, never through
   `GtkSourceFileLoader`/`Saver` or GIO directly.
+- **Color schemes:** light uses GtkSourceView's `Adwaita`, dark uses our
+  `palang-dark` (`data/styles/palang-dark.xml`, inherits `Adwaita-dark`).
+  Bundled in the gresource and copied to `~/.cache/palang/styles/` at
+  start (GtkSourceView 5.12 can't load schemes from resources). Add a
+  scheme: the XML, a gresource line, a name in `add_palang_style_schemes ()`.
+  The terminal's background matches it (`palang-terminal.c`).
 - `palang_editor_go_to ()` also works in a tab opened a moment ago (it
   keeps scrolling until the cursor is visible).
 - **Extension points:** `lsp/` (2b) works on the document (text,
@@ -238,7 +244,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 - **Look:** square corners everywhere (`* { border-radius: 0 }`), the
   libadwaita accent color redefined as the logo's amber, and the main
   window's solid frame; all in `data/style.css` (+ `style-dark.css` for
-  dark-mode values). Don't use the `accent` class to mean "info" (it is
+  dark-mode values), with more contrast in dark mode and VS Code-like
+  selections (selected tab joined to the editor with an amber top line,
+  amber selected rows in every `listview`). Don't use the `accent` class to mean "info" (it is
   amber, like a warning): use `palang-info` (blue).
 - **App stylesheet:** `data/style.css`, loaded by AdwApplication by
   itself (it's in the resource-base-path). Add Palang's own CSS there

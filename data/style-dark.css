@@ -11,3 +11,20 @@ window.palang-window {
 @define-color accent_bg_color #f5b041;
 @define-color accent_fg_color rgba(0, 0, 0, 0.87);
 @define-color accent_color #f5b041;
+
+/* More contrast (chosen with sahi): darker backgrounds, with each area a
+ * step apart from the next so they stand out: editor and terminal darkest
+ * (#0f0f0f, the editor's own scheme data/styles/palang-dark.xml), then the
+ * window, the sidebar, the header bars, and dialogs lightest. Lines between
+ * areas are stronger too ("borders"; libadwaita's is 15% of the text color).
+ * The values replace libadwaita's dark ones, as for the accent above. */
+@define-color view_bg_color #0f0f0f;
+@define-color window_bg_color #141414;
+@define-color sidebar_bg_color #181818;
+@define-color sidebar_backdrop_color #161616;
+@define-color headerbar_bg_color #1f1f1f;
+@define-color headerbar_backdrop_color #1a1a1a;
+@define-color dialog_bg_color #222222;
+@define-color popover_bg_color #222222;
+@define-color card_bg_color rgba(255, 255, 255, 0.06);
+@define-color borders alpha(currentColor, 0.22);

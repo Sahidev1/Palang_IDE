@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Palang's dark color scheme for the editor: Adwaita Dark (which ships with
+  GtkSourceView) with more contrast, chosen with sahi on 2026-10-22: a
+  near-black background, brighter text, punchier syntax colors (in the
+  spirit of VS Code's dark themes), and the logo's amber for the cursor and
+  the current line number.
+
+  parent-scheme: every style not listed here comes from Adwaita-dark, so
+  this file only holds what Palang changes. The "def:" styles are the ones
+  all languages map onto (keywords, strings, …).
+-->
+<style-scheme id="palang-dark" name="Palang Dark" version="1.0" parent-scheme="Adwaita-dark">
+  <author>Palang</author>
+  <description>Adwaita Dark with more contrast</description>
+  <metadata>
+    <property name="variant">dark</property>
+    <property name="light-variant">Adwaita</property>
+  </metadata>
+
+  <!-- Palang's own colors. -->
+  <color name="bg"            value="#0f0f0f"/>
+  <color name="bg-line"       value="#1c1c1c"/>
+  <color name="fg"            value="#e8e8e8"/>
+  <color name="fg-dim"        value="#5f5f5f"/>
+  <color name="amber"         value="#f5b041"/>
+  <color name="selection"     value="#264f78"/>
+  <color name="selection-dim" value="#1d3346"/>
+  <color name="comment"       value="#7f8c8d"/>
+  <color name="keyword"       value="#ff9d47"/>
+  <color name="type"          value="#4ec9b0"/>
+  <color name="string"        value="#a6e22e"/>
+  <color name="number"        value="#c792ea"/>
+  <color name="function"      value="#61afef"/>
+  <color name="preprocessor"  value="#ff6e9c"/>
+
+  <!-- The editor itself. -->
+  <style name="text"                foreground="fg" background="bg"/>
+  <style name="background-pattern"  background="bg-line"/>
+  <style name="current-line"        background="bg-line"/>
+  <style name="line-numbers"        foreground="fg-dim" background="bg"/>
+  <style name="current-line-number" foreground="amber" background="bg-line" bold="true"/>
+  <style name="cursor"              foreground="amber"/>
+  <style name="selection"           background="selection"/>
+  <style name="selection-unfocused" background="selection-dim"/>
+  <style name="bracket-match"       background="#3a3a3a" bold="true"/>
+  <style name="search-match"        foreground="#000000" background="amber"/>
+  <style name="draw-spaces"         foreground="#3a3a3a"/>
+  <style name="right-margin"        foreground="#2a2a2a" background="#2a2a2a"/>
+
+  <!-- Code. -->
+  <style name="def:comment"          foreground="comment" italic="true"/>
+  <style name="def:doc-comment-element" foreground="#a0aeaf" italic="true"/>
+  <style name="def:statement"        foreground="keyword" bold="true"/>
+  <style name="def:keyword"          foreground="keyword" bold="true"/>
+  <style name="def:type"             foreground="type" bold="true"/>
+  <style name="def:string"           foreground="string"/>
+  <style name="def:special-char"     foreground="amber"/>
+  <style name="def:number"           foreground="number"/>
+  <style name="def:decimal"          foreground="number"/>
+  <style name="def:base-n-integer"   foreground="number"/>
+  <style name="def:floating-point"   foreground="number"/>
+  <style name="def:boolean"          foreground="number"/>
+  <style name="def:constant"         foreground="number"/>
+  <style name="def:function"         foreground="function"/>
+  <style name="def:identifier"       foreground="fg"/>
+  <style name="def:preprocessor"     foreground="preprocessor"/>
+  <style name="def:heading"          foreground="amber" bold="true"/>
+  <style name="def:inline-code"      foreground="number"/>
+  <style name="c:printf"             foreground="amber"/>
+  <style name="c:storage-class"      foreground="type" bold="true"/>
+  <style name="c:type-keyword"       foreground="type" bold="true"/>
+</style-scheme>
