@@ -15,6 +15,7 @@
 #include <adwaita.h>
 
 #include "palang-save-flow.h"
+#include "palang-window.h"
 
 typedef struct {
   GtkWindow *parent;  /* owned */
@@ -157,8 +158,9 @@ ask_for_location (GTask *task)
   gtk_file_dialog_set_title (dialog, "Save As");
 
   /* Start in the file's folder with its name filled in; for a new document,
-   * just suggest a name. The file chooser itself asks before replacing an
-   * existing file. */
+   * suggest a name and start in the window's project folder, if one is
+   * open (else the file chooser picks, usually the last folder used). The
+   * file chooser itself asks before replacing an existing file. */
   if (current != NULL)
     {
       gtk_file_dialog_set_initial_file (dialog, current);
@@ -166,7 +168,14 @@ ask_for_location (GTask *task)
   else
     {
       g_autofree char *title = palang_document_dup_title (document);
+      GFile *folder = NULL;
+
+      if (PALANG_IS_WINDOW (data->parent))
+        folder = palang_window_get_folder (PALANG_WINDOW (data->parent));
+
       gtk_file_dialog_set_initial_name (dialog, title);
+      if (folder != NULL)
+        gtk_file_dialog_set_initial_folder (dialog, folder);
     }
 
   gtk_file_dialog_save (dialog, data->parent, g_task_get_cancellable (task),
