@@ -143,7 +143,8 @@ on_entry_activate (GtkSearchEntry *entry,
     activate_position (self, selected);
 }
 
-/* A click on a row. */
+/* A double click on a row, or Enter while the list has the focus. (A
+ * single click is on_row_clicked () below.) */
 static void
 on_row_activate (GtkListView   *list_view,
                  guint          position,
@@ -194,6 +195,28 @@ on_entry_key_pressed (GtkEventControllerKey *controller,
 
 /* ---- Rows --------------------------------------------------------------- */
 
+/* One click on a row picks it.
+ *
+ * GtkListView's own "single-click-activate" would do this too, but it
+ * also selects whichever row is under the pointer. When Down scrolls the
+ * list, another row slides under a pointer resting on the list and gets
+ * selected, so the highlight jumped back instead of moving on. A click
+ * gesture on each row's contents picks the row without hover selection.
+ * (data/style.css moves the row's padding into its contents, so the
+ * contents fill the whole row.) */
+static void
+on_row_clicked (GtkGestureClick *click,
+                int              n_press,
+                double           x,
+                double           y,
+                GtkListItem     *list_item)
+{
+  GtkWidget *row = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (click));
+  PalangPalette *self = PALANG_PALETTE (gtk_widget_get_ancestor (row, PALANG_TYPE_PALETTE));
+
+  activate_position (self, gtk_list_item_get_position (list_item));
+}
+
 /* A row: the title on the left, the subtitle (shortcut, folder) dimmed on
  * the right. */
 static void
@@ -204,6 +227,13 @@ on_setup_row (GtkSignalListItemFactory *factory,
   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
   GtkWidget *title = gtk_label_new (NULL);
   GtkWidget *subtitle = gtk_label_new (NULL);
+  GtkGesture *click = gtk_gesture_click_new ();
+
+  /* The list item outlives its row widget (and so this gesture), so it
+   * is safe to pass as user data. */
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), GDK_BUTTON_PRIMARY);
+  g_signal_connect (click, "released", G_CALLBACK (on_row_clicked), list_item);
+  gtk_widget_add_controller (box, GTK_EVENT_CONTROLLER (click));
 
   gtk_label_set_xalign (GTK_LABEL (title), 0);
   gtk_label_set_ellipsize (GTK_LABEL (title), PANGO_ELLIPSIZE_END);

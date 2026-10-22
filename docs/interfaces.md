@@ -149,6 +149,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `javascript-server` (typescript-language-server --stdio), group `[lsp]`;
   empty turns one off. One server per server key per window, started for
   the first document of its language.
+- **A server given by its full path** gets its own folder first on its
+  `PATH` (nvm keeps `node` next to `typescript-language-server`); that is
+  how a server installed with nvm works when Palang starts from the menu.
 - **Messages are GVariants** (jsonrpc-glib): JSON objects are `a{sv}`,
   arrays `av` (elements boxed in `v`). Build with `JSONRPC_MESSAGE_NEW`,
   read with `JSONRPC_MESSAGE_PARSE`; `JSONRPC_MESSAGE_PUT_VARIANT` is
@@ -191,6 +194,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `win.save`, `win.save-as`, `win.save-all`, `win.close-tab`, `win.find`,
   `win.replace`, `win.find-next`, `win.find-previous`, `win.go-to-line`,
   `win.go-to-definition` (F12), `win.restart-language-servers`.
+- **App stylesheet:** `data/style.css`, loaded by AdwApplication by
+  itself (it's in the resource-base-path). Add Palang's own CSS there
+  (later: ghost text, math blocks); give widgets a `palang-…` class.
 - **Adding a panel page** (e.g. 2c's Problems page): create the
   widget in the window and call `palang_panel_add_page ()`; connect its
   signals there.

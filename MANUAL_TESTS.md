@@ -250,3 +250,15 @@ project, e.g. `/tmp/lsp-test/`.
   bug. With spaces instead of tabs, Tab moves to the next tab stop (every
   2 columns), so after one letter that is one space; a tab character, VS
   Code and gedit do the same.
+- Phase 2b, test 1 (palette: with the pointer over the list, Down at the
+  bottom jumped back up): the list used `single-click-activate`, which in
+  GTK4 also selects the row under the pointer; when Down scrolled the list,
+  another row slid under the pointer and got selected. Fixed: one click is
+  handled per row instead (`palang-palette.c`, `on_row_clicked`), and
+  `data/style.css` makes the row's contents fill the whole row.
+- Phase 2b, test 3 (JavaScript server from the desktop menu: “isn't
+  installed”): expected. nvm puts Node on the PATH only in terminals.
+  Decided (option A): a server given by its full path gets its own folder
+  first on PATH (that's where nvm keeps `node`), and the toast's Details
+  say how: in Palang's terminal,
+  `palang set javascript-server "$(command -v typescript-language-server) --stdio"`.

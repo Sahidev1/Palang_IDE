@@ -34,7 +34,9 @@
  *   --slow-definition          answer it after 300 ms
  *
  * Requests it answers: "initialize", "shutdown", "textDocument/definition"
- * (see --definition), and "fake/echo", which replies with its params.
+ * (see --definition), "fake/echo", which replies with its params, and
+ * "fake/getenv" ({"name": …}), which replies with that environment
+ * variable's value (a string, or null if it isn't set).
  */
 
 #include "config.h"
@@ -191,6 +193,19 @@ on_handle_call (JsonrpcClient *rpc,
   else if (g_str_equal (method, "fake/echo"))
     {
       jsonrpc_client_reply_async (rpc, id, params, NULL, NULL, NULL);
+    }
+  else if (g_str_equal (method, "fake/getenv"))
+    {
+      const char *name = NULL;
+      const char *value = NULL;
+      g_autoptr (GVariant) reply = NULL;
+
+      JSONRPC_MESSAGE_PARSE (params, "name", JSONRPC_MESSAGE_GET_STRING (&name));
+      if (name != NULL)
+        value = g_getenv (name);
+      if (value != NULL)
+        reply = g_variant_ref_sink (g_variant_new_string (value));
+      jsonrpc_client_reply_async (rpc, id, reply, NULL, NULL, NULL);
     }
   else
     {

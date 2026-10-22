@@ -20,8 +20,14 @@ static const PalangLspServerInfo servers[] = {
     "sudo apt install python3-pylsp python3-pyflakes" },
   { "javascript", "JavaScript",
     /* TypeScript 7 (the native rewrite) has no tsserver, which
-     * typescript-language-server needs; checked with 6.0.2. */
-    "npm install -g typescript-language-server typescript@5" },
+     * typescript-language-server needs; checked with 6.0.2.
+     * Installed with nvm, it is on the PATH only in terminals: Palang
+     * started from the desktop menu needs its full path (the client then
+     * also finds `node` next to it). */
+    "npm install -g typescript-language-server typescript@5\n\n"
+    "If it is installed (for example with nvm) and Palang was started from "
+    "the desktop menu, give its full path by running this in Palang's terminal:\n"
+    "palang set javascript-server \"$(command -v typescript-language-server) --stdio\"" },
 };
 
 static const struct {

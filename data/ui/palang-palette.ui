@@ -39,12 +39,15 @@
             <property name="vexpand">true</property>
             <property name="hscrollbar-policy">never</property>
             <property name="child">
-              <!-- Model and row widgets are set up in palang-palette.c. -->
+              <!-- Model and row widgets are set up in palang-palette.c.
+                   Not single-click-activate: that also selects the row
+                   under the pointer, which fights Up/Down (a single click
+                   is handled per row instead). -->
               <object class="GtkListView" id="list_view">
-                <property name="single-click-activate">true</property>
                 <signal name="activate" handler="on_row_activate"/>
                 <style>
                   <class name="navigation-sidebar"/>
+                  <class name="palang-palette-list"/>  <!-- see style.css -->
                 </style>
               </object>
             </property>

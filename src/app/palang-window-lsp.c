@@ -22,6 +22,8 @@
 
 #include "config.h"
 
+#include <string.h>
+
 #include "palang-window-private.h"
 
 static PalangEditor *
@@ -195,8 +197,14 @@ on_server_failed (PalangLspManager *manager,
                   const char       *message,
                   PalangWindow     *self)
 {
-  AdwToast *toast = adw_toast_new (message);
+  /* The toast shows the first line; "Details" shows all of it (an install
+   * hint can add more lines). */
+  g_autofree char *first_line = g_strndup (message, strcspn (message, "\n"));
+  AdwToast *toast = adw_toast_new (first_line);
 
+  /* Toast titles are Pango markup by default; a server's message is plain
+   * text and may contain "<" or "&". */
+  adw_toast_set_use_markup (toast, FALSE);
   adw_toast_set_timeout (toast, 10);
   adw_toast_set_button_label (toast, "Details");
   /* g_object_set_data_full () attaches a value to any GObject by name; the

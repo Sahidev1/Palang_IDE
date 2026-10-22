@@ -324,6 +324,24 @@ palang_lsp_client_start (PalangLspClient *self)
       g_subprocess_launcher_set_cwd (launcher, root_path);
     }
 
+  /* A server given by its full path ("/home/me/.nvm/…/bin/typescript-
+   * language-server") often needs other programs from the same folder:
+   * that one starts with "#!/usr/bin/env node", and nvm keeps `node`
+   * next to it. Palang started from the desktop menu doesn't have that
+   * folder on its PATH (nvm adds it only in terminals), so put it first
+   * for the server. The launcher copies our environment; setenv changes
+   * one variable in its copy only. */
+  if (g_path_is_absolute (self->argv[0]))
+    {
+      g_autofree char *folder = g_path_get_dirname (self->argv[0]);
+      const char *path = g_getenv ("PATH");
+      g_autofree char *new_path = path != NULL && path[0] != '\0'
+                                    ? g_strconcat (folder, ":", path, NULL)
+                                    : g_strdup (folder);
+
+      g_subprocess_launcher_setenv (launcher, "PATH", new_path, TRUE);
+    }
+
   self->process = g_subprocess_launcher_spawnv (launcher, (const char * const *) self->argv, &error);
   if (self->process == NULL)
     {

@@ -337,6 +337,29 @@ test_client_call (Fixture *fixture, gconstpointer data)
   stop_and_wait (fixture, client);
 }
 
+/* A server given by its full path gets its own folder first on PATH, so
+ * it finds programs installed next to it (nvm's `node`). */
+static void
+test_client_path_includes_server_folder (Fixture *fixture, gconstpointer data)
+{
+  PalangLspClient *client = new_fake_client (fixture, NULL, NULL);
+  g_autoptr (GVariant) params = JSONRPC_MESSAGE_NEW ("name", JSONRPC_MESSAGE_PUT_STRING ("PATH"));
+  g_autoptr (GVariant) reply = NULL;
+  g_autofree char *folder = g_path_get_dirname (FAKE_LSP_SERVER);
+  g_autofree char *expected_start = g_strconcat (folder, ":", NULL);
+
+  palang_lsp_client_start (client);
+  wait_for_count (&fixture->n_ready, 1, "ready");
+
+  palang_lsp_client_call_async (client, "fake/getenv", params, NULL, on_echo_replied, &reply);
+  while (reply == NULL)
+    g_main_context_iteration (NULL, TRUE);
+
+  g_assert_true (g_str_has_prefix (g_variant_get_string (reply, NULL), expected_start));
+
+  stop_and_wait (fixture, client);
+}
+
 /* A program that doesn't exist: "failed", with the install hint. */
 static void
 test_client_missing_program (Fixture *fixture, gconstpointer data)
@@ -1275,6 +1298,7 @@ main (int   argc,
   ADD_TEST ("/lsp/client/start-and-stop", test_client_start_and_stop);
   ADD_TEST ("/lsp/client/no-folder", test_client_no_folder);
   ADD_TEST ("/lsp/client/call", test_client_call);
+  ADD_TEST ("/lsp/client/path-includes-server-folder", test_client_path_includes_server_folder);
   ADD_TEST ("/lsp/client/missing-program", test_client_missing_program);
   ADD_TEST ("/lsp/client/restarts-then-gives-up", test_client_restarts_then_gives_up);
   ADD_TEST ("/lsp/client/initialize-refused", test_client_initialize_refused);
