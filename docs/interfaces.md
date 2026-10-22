@@ -137,11 +137,12 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 
 | Header | Use it for |
 |---|---|
-| `palang-lsp-manager.h` | **PalangLspManager**, the language servers of one window: property `folder`; `add_document ()` / `remove_document ()` for every tab; `add_view ()` for its view (gutter icons, hover); `restart ()`; `get_client ()` / `get_lsp_document ()` for a document; `find_definition_async ()`. Signal `server-failed (message)`. **Start here.** |
+| `palang-lsp-manager.h` | **PalangLspManager**, the language servers of one window: property `folder`; `add_document ()` / `remove_document ()` for every tab; `add_view ()` for its view (gutter icons, hover); `restart ()`; `get_client ()` / `get_lsp_document ()` for a document; `find_definition_async ()`, `hover_async ()` (Markdown). Signal `server-failed (message)`. **Start here.** |
 | `palang-lsp-client.h` | **PalangLspClient**, one server process: `start`, `stop` (polite, then killed after 2 s; holds the app), `call_async` (requests), `notify` (notifications), `get_capabilities ()`, `get_sync_kind ()`. Signals `ready` (also after each restart), `failed (message)`, `notification (method, params)`. |
 | `palang-lsp-document.h` | **PalangLspDocument**, one document as its server sees it: the sync (didOpen/didChange/didSave/didClose), `get_version ()`, `get_uri ()`, diagnostics (`set_diagnostics ()`, `dup_messages_at ()`). |
 | `palang-lsp-diagnostics.h` | Shows diagnostics in a buffer (tags, gutter marks, messages by position); used by PalangLspDocument. |
-| `palang-lsp-hover-provider.h` | **PalangLspHoverProvider**, the `GtkSourceHoverProvider` that shows diagnostic messages. 2c adds the server's hover text here. |
+| `palang-lsp-hover-provider.h` | **PalangLspHoverProvider**, the `GtkSourceHoverProvider` (async): diagnostic messages, then the server's hover text. |
+| `palang-lsp-markdown.h` | The servers' Markdown → Pango markup for a GtkLabel (code, headings, emphasis; the rest as plain text); `_escape ()` for plain-text answers. Use it for completion documentation too. |
 | `palang-lsp-position.h` | Editor characters ↔ LSP UTF-16 units: pure functions and iter wrappers. **Every** position to or from a server goes through these. |
 | `palang-lsp-languages.h` | GtkSourceView language id → server (key, title, install hint) and LSP language id. Add a language here. |
 
@@ -159,11 +160,14 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 - **Rules:** check the document version when an answer comes back, and
   drop it if the text changed (`find_definition_async ()` does). Untitled
   documents aren't sent until saved.
-- **For 2c:** hover = a request from `PalangLspHoverProvider` (its
-  `populate_async`); completion = a `GtkSourceCompletionProvider` added in
-  `add_view ()`; both use `palang_lsp_manager_get_lsp_document ()` and the
-  client's `call_async ()`. A Problems page would listen for diagnostics
-  changes (a new signal on PalangLspManager) and be added with
+- **Requests about a position** (definition, hover; completion next) go
+  through `send_position_request ()` in `palang-lsp-manager.c`: it checks
+  the server announced the capability (else `G_IO_ERROR_NOT_SUPPORTED`)
+  and remembers the document version; `return_if_stale ()` drops answers
+  about old text.
+- **Rest of 2c:** completion = a `GtkSourceCompletionProvider` added in
+  `add_view ()`; a Problems page would listen for diagnostics changes (a
+  new signal on PalangLspManager) and be added with
   `palang_panel_add_page ()`.
 - **Phase 3 (ghost text) must not reach servers:** didChange is sent from
   `insert-text`/`delete-range`, so ghost text has to be shown without

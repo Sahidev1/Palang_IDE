@@ -15,6 +15,7 @@
 #include "palang-lsp-client.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
+#include "palang-lsp-markdown.h"
 #include "palang-lsp-position.h"
 
 typedef struct {
@@ -1242,7 +1243,7 @@ static void
 test_definition_stale (Fixture *fixture, gconstpointer data)
 {
   g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path,
-                                                      "--definition 0:0 --slow-definition");
+                                                      "--definition 0:0 --slow");
   PalangLspManager *manager = palang_lsp_manager_new (settings);
   g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", "int a;\n");
   DefinitionAnswer answer = { 0 };
@@ -1281,6 +1282,216 @@ test_definition_no_server (Fixture *fixture, gconstpointer data)
   clear_answer (&answer);
 }
 
+/* ---- Markdown ------------------------------------------------------------ */
+
+/* Converts @markdown and checks the result is @expected and valid markup
+ * (GtkLabel would show nothing if it weren't). */
+static void
+assert_markup (const char *markdown,
+               const char *expected)
+{
+  g_autofree char *markup = palang_lsp_markdown_to_markup (markdown);
+  g_autoptr (GError) error = NULL;
+
+  g_assert_cmpstr (markup, ==, expected);
+  g_assert_true (pango_parse_markup (markup, -1, 0, NULL, NULL, NULL, &error));
+  g_assert_no_error (error);
+}
+
+/* Shaped like the real servers' answers (captured from clangd, pylsp and
+ * typescript-language-server, shortened). */
+static void
+test_markdown_real_servers (void)
+{
+  /* clangd: heading, trailing "  " line breaks, separators, code block. */
+  assert_markup ("### function `f`  \nprovided by `\"a.h\"`  \n\n---\n"
+                 "→ `int`  \nAdds.  \n\n---\n```cpp\nint f(int *p)\n```",
+                 "<b>function <tt>f</tt></b>\nprovided by <tt>&quot;a.h&quot;</tt>\n\n"
+                 "→ <tt>int</tt>\nAdds.\n\n<tt>int f(int *p)</tt>");
+
+  /* pylsp: a signature, empty lines, escaped stars. */
+  assert_markup ("```python\narea(width: int) -> int\n```\n\n\nReturn the area.\n\n"
+                 "Uses \\*\\*width\\*\\* times `height`.",
+                 "<tt>area(width: int) -&gt; int</tt>\n\nReturn the area.\n\n"
+                 "Uses **width** times <tt>height</tt>.");
+
+  /* typescript-language-server: a leading empty line, italic tags. */
+  assert_markup ("\n```typescript\nfunction add(a: any): any\n```\nAdds `a`.\n\n"
+                 "*@param* `a` — first.  ",
+                 "<tt>function add(a: any): any</tt>\nAdds <tt>a</tt>.\n\n"
+                 "<i>@param</i> <tt>a</tt> — first.");
+}
+
+/* Text that only looks special stays as written, and is always valid
+ * markup. */
+static void
+test_markdown_edge_cases (void)
+{
+  g_autofree char *escaped = palang_lsp_markdown_escape ("# a*b <c>\n---");
+
+  assert_markup ("a * b * c", "a * b * c");
+  assert_markup ("2*3 and *unclosed", "2*3 and *unclosed");
+  assert_markup ("**bold `code*`**", "<b>bold <tt>code*</tt></b>");
+  assert_markup ("vector<int> & x", "vector&lt;int&gt; &amp; x");
+  assert_markup ("#include <x>", "#include &lt;x&gt;");
+  assert_markup ("`never closed", "`never closed");
+  assert_markup ("```\ncode <x>", "<tt>code &lt;x&gt;</tt>");  /* fence never closed */
+  assert_markup ("", "");
+
+  /* Plain text from a server, escaped, shows exactly as it was. */
+  assert_markup (escaped, "# a*b &lt;c&gt;\n---");
+}
+
+/* ---- Hover --------------------------------------------------------------- */
+
+typedef struct {
+  gboolean  done;
+  char     *text;   /* the answer, as Markdown */
+  GError   *error;
+} HoverAnswer;
+
+static void
+on_hover_answered (GObject      *source,
+                   GAsyncResult *result,
+                   gpointer      user_data)
+{
+  HoverAnswer *answer = user_data;
+
+  answer->text = palang_lsp_manager_hover_finish (PALANG_LSP_MANAGER (source), result,
+                                                  &answer->error);
+  answer->done = TRUE;
+}
+
+/* The file the hover tests use: its line starts with 😀, so GTK's
+ * character 2 is the server's 3. */
+#define HOVER_TEXT "\xf0\x9f\x98\x80 x\n"
+
+/* Asks for hover at @line, @offset (GTK counting) and waits. */
+static void
+hover_at (PalangLspManager *manager,
+          PalangDocument   *document,
+          int               line,
+          int               offset,
+          HoverAnswer      *answer)
+{
+  GtkTextIter iter;
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, line, offset);
+  palang_lsp_manager_hover_async (manager, document, &iter, NULL, on_hover_answered, answer);
+  wait_for_flag (&answer->done, "the hover answer");
+}
+
+static void
+clear_hover_answer (HoverAnswer *answer)
+{
+  g_clear_pointer (&answer->text, g_free);
+  g_clear_error (&answer->error);
+}
+
+/* The fake server answers in the form @data names ("--hover markdown",
+ * …); the answer comes back as Markdown, about the right position. */
+static void
+test_hover_forms (Fixture *fixture, gconstpointer data)
+{
+  const char *option = data;
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, option);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", HOVER_TEXT);
+  g_autofree char *markup = NULL;
+  HoverAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  hover_at (manager, document, 0, 2, &answer);
+  g_assert_no_error (answer.error);
+  g_assert_nonnull (answer.text);
+
+  if (strstr (option, "markdown") != NULL)
+    g_assert_cmpstr (answer.text, ==, "**hover** at 0:3");
+  else if (strstr (option, "plaintext") != NULL)
+    {
+      /* Plain text is escaped, so its stars stay stars. */
+      markup = palang_lsp_markdown_to_markup (answer.text);
+      g_assert_cmpstr (markup, ==, "**not bold** at 0:3");
+    }
+  else
+    g_assert_cmpstr (answer.text, ==, "```c\nint x\n```\n\nplain *doc*");
+
+  clear_hover_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* "null": nothing to say there. No text, no error. */
+static void
+test_hover_nothing (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, "--hover none");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", HOVER_TEXT);
+  HoverAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  hover_at (manager, document, 0, 2, &answer);
+  g_assert_no_error (answer.error);
+  g_assert_null (answer.text);
+
+  clear_hover_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* A server that doesn't announce "hoverProvider" isn't asked. */
+static void
+test_hover_not_supported (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path, NULL);
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", HOVER_TEXT);
+  g_autofree char *log = NULL;
+  HoverAnswer answer = { 0 };
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  hover_at (manager, document, 0, 2, &answer);
+  g_assert_error (answer.error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED);
+  g_assert_null (answer.text);
+
+  log = read_log (fixture);
+  g_assert_null (strstr (log, "textDocument/hover"));
+
+  clear_hover_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
+/* The text changes before the (slow) answer comes: it is dropped. */
+static void
+test_hover_stale (Fixture *fixture, gconstpointer data)
+{
+  g_autoptr (PalangSettings) settings = new_settings (fixture, fixture->log_path,
+                                                      "--hover markdown --slow");
+  PalangLspManager *manager = palang_lsp_manager_new (settings);
+  g_autoptr (PalangDocument) document = load_new_file (fixture, "main.c", HOVER_TEXT);
+  HoverAnswer answer = { 0 };
+  GtkTextIter iter;
+
+  palang_lsp_manager_add_document (manager, document);
+  wait_for_log (fixture, "textDocument/didOpen");
+
+  gtk_text_buffer_get_iter_at_line_offset (GTK_TEXT_BUFFER (document), &iter, 0, 2);
+  palang_lsp_manager_hover_async (manager, document, &iter, NULL, on_hover_answered, &answer);
+  insert_at (document, 0, 0, "y");  /* before the answer arrives */
+  wait_for_flag (&answer.done, "the hover answer");
+
+  g_assert_error (answer.error, G_IO_ERROR, G_IO_ERROR_CANCELLED);
+  g_assert_null (answer.text);
+
+  clear_hover_answer (&answer);
+  dispose_manager_and_wait (fixture, manager, palang_lsp_manager_get_client (manager, document));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -1291,6 +1502,8 @@ main (int   argc,
   g_test_add_func ("/lsp/languages", test_languages);
   g_test_add_func ("/lsp/position/utf16", test_position_utf16);
   g_test_add_func ("/lsp/position/iters", test_position_iters);
+  g_test_add_func ("/lsp/markdown/real-servers", test_markdown_real_servers);
+  g_test_add_func ("/lsp/markdown/edge-cases", test_markdown_edge_cases);
 
 #define ADD_TEST(path, func) \
   g_test_add (path, Fixture, NULL, fixture_setup, func, fixture_teardown)
@@ -1319,6 +1532,15 @@ main (int   argc,
   ADD_TEST ("/lsp/definition/nothing", test_definition_nothing);
   ADD_TEST ("/lsp/definition/stale", test_definition_stale);
   ADD_TEST ("/lsp/definition/no-server", test_definition_no_server);
+  g_test_add ("/lsp/hover/markdown", Fixture, "--hover markdown",
+              fixture_setup, test_hover_forms, fixture_teardown);
+  g_test_add ("/lsp/hover/plaintext", Fixture, "--hover plaintext",
+              fixture_setup, test_hover_forms, fixture_teardown);
+  g_test_add ("/lsp/hover/legacy", Fixture, "--hover legacy",
+              fixture_setup, test_hover_forms, fixture_teardown);
+  ADD_TEST ("/lsp/hover/nothing", test_hover_nothing);
+  ADD_TEST ("/lsp/hover/not-supported", test_hover_not_supported);
+  ADD_TEST ("/lsp/hover/stale", test_hover_stale);
 
 #undef ADD_TEST
 

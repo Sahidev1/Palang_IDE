@@ -24,6 +24,7 @@
 #include "palang-lsp-hover-provider.h"
 #include "palang-lsp-languages.h"
 #include "palang-lsp-manager.h"
+#include "palang-lsp-markdown.h"
 #include "palang-lsp-position.h"
 
 struct _PalangLspManager
@@ -355,20 +356,117 @@ palang_lsp_manager_get_lsp_document (PalangLspManager *self,
   return find_lsp_document (self, document, NULL);
 }
 
-/* ---- Go to definition --------------------------------------------------- */
+/* ---- Requests about a position ----------------------------------------- */
 
-/* What a definition request remembers until the answer comes. */
+/* Go to definition and hover ask the server about one position in a
+ * document. They share how the question is sent and how a stale answer
+ * (the text changed meanwhile) is dropped. */
+
+/* What a request remembers until the answer comes (the GTask's "task
+ * data"). */
 typedef struct {
   PalangLspDocument *lsp_document;  /* owned */
   gint64             version;       /* of the text the question was about */
-} DefinitionRequest;
+} PositionRequest;
 
 static void
-definition_request_free (DefinitionRequest *request)
+position_request_free (PositionRequest *request)
 {
   g_clear_object (&request->lsp_document);
   g_free (request);
 }
+
+/* Returns: TRUE if @client's server announced @capability (like
+ * "hoverProvider") in its reply to "initialize". The value can be `true`
+ * or an object of options; missing or `false` means no. */
+static gboolean
+client_supports (PalangLspClient *client,
+                 const char      *capability)
+{
+  GVariant *capabilities = palang_lsp_client_get_capabilities (client);
+  g_autoptr (GVariant) value = NULL;
+
+  if (capabilities == NULL)
+    return FALSE;
+
+  value = g_variant_lookup_value (capabilities, capability, NULL);
+  if (value == NULL)
+    return FALSE;
+  return !g_variant_is_of_type (value, G_VARIANT_TYPE_BOOLEAN) || g_variant_get_boolean (value);
+}
+
+/* Sends the request @method about the position @iter in @document;
+ * @on_replied gets the reply with @task (transfer full) as its user data.
+ * Fails @task at once if no server has the document open
+ * (G_IO_ERROR_NOT_CONNECTED) or the server doesn't offer @capability
+ * (G_IO_ERROR_NOT_SUPPORTED). */
+static void
+send_position_request (PalangLspManager    *self,
+                       PalangDocument      *document,
+                       const GtkTextIter   *iter,
+                       const char          *method,
+                       const char          *capability,
+                       GTask               *task,
+                       GAsyncReadyCallback  on_replied)
+{
+  g_autoptr (GVariant) params = NULL;
+  PalangLspDocument *lsp_document = find_lsp_document (self, document, NULL);
+  PalangLspClient *client = lsp_document != NULL ? palang_lsp_document_get_client (lsp_document) : NULL;
+  PositionRequest *request;
+  guint line, character;
+
+  if (client == NULL || !palang_lsp_document_is_open (lsp_document))
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
+                               "No language server has this file open");
+      g_object_unref (task);
+      return;
+    }
+
+  if (!client_supports (client, capability))
+    {
+      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                               "The %s language server doesn't offer this",
+                               palang_lsp_client_get_title (client));
+      g_object_unref (task);
+      return;
+    }
+
+  request = g_new0 (PositionRequest, 1);
+  request->lsp_document = g_object_ref (lsp_document);
+  request->version = palang_lsp_document_get_version (lsp_document);
+  g_task_set_task_data (task, request, (GDestroyNotify) position_request_free);
+
+  palang_lsp_position_from_iter (iter, &line, &character);
+  params = JSONRPC_MESSAGE_NEW (
+    "textDocument", "{",
+      "uri", JSONRPC_MESSAGE_PUT_STRING (palang_lsp_document_get_uri (lsp_document)),
+    "}",
+    "position", "{",
+      "line", JSONRPC_MESSAGE_PUT_INT64 (line),
+      "character", JSONRPC_MESSAGE_PUT_INT64 (character),
+    "}");
+  palang_lsp_client_call_async (client, method, params, g_task_get_cancellable (task),
+                                on_replied, task);
+}
+
+/* Returns: TRUE, after failing @task with G_IO_ERROR_CANCELLED, if the
+ * text changed since the request was sent: the answer is about old
+ * text. */
+static gboolean
+return_if_stale (GTask *task)
+{
+  PositionRequest *request = g_task_get_task_data (task);
+
+  if (palang_lsp_document_get_version (request->lsp_document) == request->version)
+    return FALSE;
+
+  g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_CANCELLED,
+                           "The text changed while waiting for the server");
+  return TRUE;
+}
+
+/* ---- Go to definition --------------------------------------------------- */
 
 /* The result handed to _finish (). */
 typedef struct {
@@ -438,7 +536,6 @@ on_definition_replied (GObject      *source,
 {
   g_autoptr (GTask) task = user_data;
   PalangLspManager *self = g_task_get_source_object (task);
-  DefinitionRequest *request = g_task_get_task_data (task);
   g_autoptr (GVariant) reply = NULL;
   g_autoptr (GVariant) location = NULL;
   g_autoptr (GError) error = NULL;
@@ -454,12 +551,8 @@ on_definition_replied (GObject      *source,
       return;
     }
 
-  if (palang_lsp_document_get_version (request->lsp_document) != request->version)
-    {
-      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_CANCELLED,
-                               "The text changed while waiting for the server");
-      return;
-    }
+  if (return_if_stale (task))
+    return;
 
   /* The answer is one Location, an array of them (we take the first), or
    * null (reply == NULL): nothing found. Arrays arrive as "av". */
@@ -510,44 +603,15 @@ palang_lsp_manager_find_definition_async (PalangLspManager    *self,
                                           GAsyncReadyCallback  callback,
                                           gpointer             user_data)
 {
-  g_autoptr (GTask) task = NULL;
-  g_autoptr (GVariant) params = NULL;
-  PalangLspDocument *lsp_document;
-  PalangLspClient *client;
-  DefinitionRequest *request;
-  guint line, character;
+  GTask *task;
 
   g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
   g_return_if_fail (PALANG_IS_DOCUMENT (document));
   g_return_if_fail (iter != NULL);
 
   task = g_task_new (self, cancellable, callback, user_data);
-  lsp_document = find_lsp_document (self, document, NULL);
-  client = lsp_document != NULL ? palang_lsp_document_get_client (lsp_document) : NULL;
-
-  if (client == NULL || !palang_lsp_document_is_open (lsp_document))
-    {
-      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
-                               "No language server has this file open");
-      return;
-    }
-
-  request = g_new0 (DefinitionRequest, 1);
-  request->lsp_document = g_object_ref (lsp_document);
-  request->version = palang_lsp_document_get_version (lsp_document);
-  g_task_set_task_data (task, request, (GDestroyNotify) definition_request_free);
-
-  palang_lsp_position_from_iter (iter, &line, &character);
-  params = JSONRPC_MESSAGE_NEW (
-    "textDocument", "{",
-      "uri", JSONRPC_MESSAGE_PUT_STRING (palang_lsp_document_get_uri (lsp_document)),
-    "}",
-    "position", "{",
-      "line", JSONRPC_MESSAGE_PUT_INT64 (line),
-      "character", JSONRPC_MESSAGE_PUT_INT64 (character),
-    "}");
-  palang_lsp_client_call_async (client, "textDocument/definition", params, cancellable,
-                                on_definition_replied, g_steal_pointer (&task));
+  send_position_request (self, document, iter, "textDocument/definition", "definitionProvider",
+                         task, on_definition_replied);
 }
 
 gboolean
@@ -571,6 +635,136 @@ palang_lsp_manager_find_definition_finish (PalangLspManager  *self,
   *column = found->column;
   definition_result_free (found);
   return TRUE;
+}
+
+/* ---- Hover -------------------------------------------------------------- */
+
+/* Returns: (transfer full) (nullable): one piece of a hover answer as
+ * Markdown. The protocol has three kinds:
+ *   MarkupContent  {"kind": "markdown" or "plaintext", "value": …}
+ *   MarkedString   "Markdown text", or {"language": "c", "value": code}
+ * (MarkedString is the older form; some servers still send it.) */
+static char *
+hover_part_to_markdown (GVariant *part)
+{
+  const char *kind = NULL;
+  const char *language = NULL;
+  const char *value = NULL;
+
+  if (g_variant_is_of_type (part, G_VARIANT_TYPE_STRING))
+    return g_variant_dup_string (part, NULL);
+
+  if (!g_variant_is_of_type (part, G_VARIANT_TYPE_VARDICT))
+    return NULL;
+
+  if (JSONRPC_MESSAGE_PARSE (part,
+                             "kind", JSONRPC_MESSAGE_GET_STRING (&kind),
+                             "value", JSONRPC_MESSAGE_GET_STRING (&value)))
+    return g_str_equal (kind, "markdown") ? g_strdup (value) : palang_lsp_markdown_escape (value);
+
+  if (JSONRPC_MESSAGE_PARSE (part,
+                             "language", JSONRPC_MESSAGE_GET_STRING (&language),
+                             "value", JSONRPC_MESSAGE_GET_STRING (&value)))
+    return g_strdup_printf ("```%s\n%s\n```", language, value);
+
+  return NULL;
+}
+
+/* Returns: (transfer full) (nullable): a hover answer's "contents" as
+ * Markdown: one piece, or an array of them (arrives as "av") joined by
+ * empty lines. NULL if there's no text. */
+static char *
+hover_contents_to_markdown (GVariant *contents)
+{
+  g_autoptr (GPtrArray) parts = g_ptr_array_new_with_free_func (g_free);
+  char *markdown;
+
+  if (!g_variant_is_of_type (contents, G_VARIANT_TYPE ("av")))
+    {
+      markdown = hover_part_to_markdown (contents);
+    }
+  else
+    {
+      for (gsize i = 0; i < g_variant_n_children (contents); i++)
+        {
+          g_autoptr (GVariant) boxed = g_variant_get_child_value (contents, i);
+          g_autoptr (GVariant) part = g_variant_get_variant (boxed);
+          char *text = hover_part_to_markdown (part);
+
+          if (text != NULL)
+            g_ptr_array_add (parts, text);
+        }
+      g_ptr_array_add (parts, NULL);  /* g_strjoinv () wants a NULL at the end */
+      markdown = g_strjoinv ("\n\n", (char **) parts->pdata);
+    }
+
+  /* Servers sometimes answer with only spaces or empty lines. */
+  if (markdown != NULL)
+    {
+      g_autofree char *stripped = g_strstrip (g_strdup (markdown));
+
+      if (stripped[0] == '\0')
+        g_clear_pointer (&markdown, g_free);
+    }
+
+  return markdown;
+}
+
+static void
+on_hover_replied (GObject      *source,
+                  GAsyncResult *result,
+                  gpointer      user_data)
+{
+  g_autoptr (GTask) task = user_data;
+  g_autoptr (GVariant) reply = NULL;
+  g_autoptr (GVariant) contents = NULL;
+  g_autoptr (GError) error = NULL;
+
+  reply = palang_lsp_client_call_finish (PALANG_LSP_CLIENT (source), result, &error);
+  if (error != NULL)
+    {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+  if (return_if_stale (task))
+    return;
+
+  /* A Hover is {"contents": …, "range": …}; null means nothing to say. */
+  if (reply != NULL && g_variant_is_of_type (reply, G_VARIANT_TYPE_VARDICT))
+    contents = g_variant_lookup_value (reply, "contents", NULL);
+
+  g_task_return_pointer (task, contents != NULL ? hover_contents_to_markdown (contents) : NULL,
+                         g_free);
+}
+
+void
+palang_lsp_manager_hover_async (PalangLspManager    *self,
+                                PalangDocument      *document,
+                                const GtkTextIter   *iter,
+                                GCancellable        *cancellable,
+                                GAsyncReadyCallback  callback,
+                                gpointer             user_data)
+{
+  GTask *task;
+
+  g_return_if_fail (PALANG_IS_LSP_MANAGER (self));
+  g_return_if_fail (PALANG_IS_DOCUMENT (document));
+  g_return_if_fail (iter != NULL);
+
+  task = g_task_new (self, cancellable, callback, user_data);
+  send_position_request (self, document, iter, "textDocument/hover", "hoverProvider",
+                         task, on_hover_replied);
+}
+
+char *
+palang_lsp_manager_hover_finish (PalangLspManager  *self,
+                                 GAsyncResult      *result,
+                                 GError           **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, self), NULL);
+
+  return g_task_propagate_pointer (G_TASK (result), error);
 }
 
 /* ---- Folder ------------------------------------------------------------- */

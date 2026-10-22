@@ -185,10 +185,17 @@ and completion.
 | 2b.4 | Go to definition: F12 / Ctrl+click → `palang_window_open_file_at ()` |
 | 2b.5 | End of phase: PROGRESS, manual tests, `docs/03-*.md`, `interfaces.md` |
 
-### 2c (next session)
+### 2c (decided with sahi, 2026-10-22)
 
-Hover popups, completion (`GtkSourceCompletionProvider`, trigger
-characters, snippets), and probably the Problems page.
+| Step | What |
+|---|---|
+| 2c.1 | Hover: the server's text under the diagnostics in the popup; Markdown shown as plain text with code blocks and inline code in monospace, headings bold, separators as empty lines (`palang-lsp-markdown.c`) |
+| 2c.2 | Completion core: a `GtkSourceCompletionProvider`; popup while typing and after trigger characters (`.`, `->`, `::`), filtered with our fuzzy matcher, stale answers dropped |
+| 2c.3 | Snippets (function arguments as Tab placeholders, via GtkSourceSnippet) and the documentation pane (`completionItem/resolve` for the selected entry) |
+| 2c.4 | Problems page in the bottom panel: every diagnostic, click to jump |
+| 2c.5 | End of phase: PROGRESS, manual tests, `docs/04-*.md`, `interfaces.md` |
+
+"Go back" (Alt+Left after a jump) only if the session has room.
 
 ### Design
 

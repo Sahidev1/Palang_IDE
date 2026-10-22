@@ -242,8 +242,8 @@ on_initialize_replied (GObject      *source,
 }
 
 /* The "initialize" request: who we are, the project folder, and what we
- * can handle ("client capabilities"). The capabilities list what Phase 2b
- * uses: document sync with save, diagnostics, go to definition. */
+ * can handle ("client capabilities"): document sync with save,
+ * diagnostics, go to definition, hover (Markdown preferred). */
 static void
 send_initialize (PalangLspClient *self)
 {
@@ -275,6 +275,12 @@ send_initialize (PalangLspClient *self)
         "}",
         "publishDiagnostics", "{", "}",
         "definition", "{", "}",
+        "hover", "{",
+          "contentFormat", "[",
+            JSONRPC_MESSAGE_PUT_STRING ("markdown"),
+            JSONRPC_MESSAGE_PUT_STRING ("plaintext"),
+          "]",
+        "}",
       "}",
     "}");
 

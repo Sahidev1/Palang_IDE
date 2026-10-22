@@ -7,7 +7,7 @@
  *   fake-lsp-server [--log FILE] [--crash-after-initialized] [--ignore-shutdown]
  *                   [--refuse-initialize] [--full-sync] [--crash-on-change]
  *                   [--diagnose] [--definition LINE:CHARACTER]
- *                   [--definition-link] [--slow-definition]
+ *                   [--definition-link] [--hover KIND] [--slow]
  *
  *   --log FILE                 append every message received to FILE, one
  *                              line each: the method, a space, the params
@@ -31,10 +31,17 @@
  *                              null, "nothing found")
  *   --definition-link          answer as an array of LocationLink instead
  *                              of one Location
- *   --slow-definition          answer it after 300 ms
+ *   --hover KIND               offer hover information ("hoverProvider";
+ *                              without it: false) and answer
+ *                              textDocument/hover in one of the protocol's
+ *                              forms: "markdown" ("**hover** at LINE:CHAR"
+ *                              as MarkupContent), "plaintext" ("**not bold**
+ *                              at LINE:CHAR") or "legacy" (an array of
+ *                              MarkedStrings), or "none" (null: nothing)
+ *   --slow                     answer definition and hover after 300 ms
  *
  * Requests it answers: "initialize", "shutdown", "textDocument/definition"
- * (see --definition), "fake/echo", which replies with its params, and
+ * (see --definition), "textDocument/hover" (see --hover), "fake/echo", which replies with its params, and
  * "fake/getenv" ({"name": …}), which replies with that environment
  * variable's value (a string, or null if it isn't set).
  */
@@ -58,7 +65,8 @@ static gboolean crash_on_change;
 static gboolean diagnose;
 static char *definition;  /* "LINE:CHAR" */
 static gboolean definition_link;
-static gboolean slow_definition;
+static char *hover;  /* "markdown", "plaintext", "legacy" or "none" */
+static gboolean slow;
 static GMainLoop *main_loop;
 
 static void
@@ -119,7 +127,45 @@ build_definition (const char *uri)
     "}");
 }
 
-/* A reply sent later (--slow-definition). */
+/* Returns: (transfer full) (nullable): the answer to a hover request at
+ * @line, @character, per --hover. */
+static GVariant *
+build_hover (gint64 line,
+             gint64 character)
+{
+  g_autofree char *where = g_strdup_printf ("%" G_GINT64_FORMAT ":%" G_GINT64_FORMAT,
+                                            line, character);
+  g_autofree char *markdown = g_strdup_printf ("**hover** at %s", where);
+  g_autofree char *plaintext = g_strdup_printf ("**not bold** at %s", where);
+
+  if (g_strcmp0 (hover, "markdown") == 0)
+    return JSONRPC_MESSAGE_NEW (
+      "contents", "{",
+        "kind", JSONRPC_MESSAGE_PUT_STRING ("markdown"),
+        "value", JSONRPC_MESSAGE_PUT_STRING (markdown),
+      "}");
+
+  if (g_strcmp0 (hover, "plaintext") == 0)
+    return JSONRPC_MESSAGE_NEW (
+      "contents", "{",
+        "kind", JSONRPC_MESSAGE_PUT_STRING ("plaintext"),
+        "value", JSONRPC_MESSAGE_PUT_STRING (plaintext),
+      "}");
+
+  if (g_strcmp0 (hover, "legacy") == 0)
+    return JSONRPC_MESSAGE_NEW (
+      "contents", "[",
+        "{",
+          "language", JSONRPC_MESSAGE_PUT_STRING ("c"),
+          "value", JSONRPC_MESSAGE_PUT_STRING ("int x"),
+        "}",
+        JSONRPC_MESSAGE_PUT_STRING ("plain *doc*"),
+      "]");
+
+  return NULL;
+}
+
+/* A reply sent later (--slow). */
 typedef struct {
   JsonrpcClient *rpc;    /* owned */
   GVariant      *id;     /* owned */
@@ -158,6 +204,8 @@ on_handle_call (JsonrpcClient *rpc,
       g_autoptr (GVariant) reply = JSONRPC_MESSAGE_NEW (
         "capabilities", "{",
           "textDocumentSync", JSONRPC_MESSAGE_PUT_INT64 (full_sync ? 1 : 2),
+          "definitionProvider", JSONRPC_MESSAGE_PUT_BOOLEAN (TRUE),
+          "hoverProvider", JSONRPC_MESSAGE_PUT_BOOLEAN (hover != NULL),
         "}",
         "serverInfo", "{",
           "name", JSONRPC_MESSAGE_PUT_STRING ("fake"),
@@ -170,15 +218,25 @@ on_handle_call (JsonrpcClient *rpc,
       if (!ignore_shutdown)
         jsonrpc_client_reply_async (rpc, id, NULL, NULL, NULL, NULL);
     }
-  else if (g_str_equal (method, "textDocument/definition"))
+  else if (g_str_equal (method, "textDocument/definition") ||
+           g_str_equal (method, "textDocument/hover"))
     {
       const char *uri = NULL;
+      gint64 line = 0, character = 0;
       g_autoptr (GVariant) reply = NULL;
 
-      JSONRPC_MESSAGE_PARSE (params, "textDocument", "{", "uri", JSONRPC_MESSAGE_GET_STRING (&uri), "}");
-      reply = build_definition (uri);
+      JSONRPC_MESSAGE_PARSE (params,
+        "textDocument", "{", "uri", JSONRPC_MESSAGE_GET_STRING (&uri), "}",
+        "position", "{",
+          "line", JSONRPC_MESSAGE_GET_INT64 (&line),
+          "character", JSONRPC_MESSAGE_GET_INT64 (&character),
+        "}");
+      if (g_str_equal (method, "textDocument/definition"))
+        reply = build_definition (uri);
+      else
+        reply = build_hover (line, character);
 
-      if (slow_definition)
+      if (slow)
         {
           LateReply *late = g_new0 (LateReply, 1);
 
@@ -369,7 +427,8 @@ main (int   argc,
     { "diagnose", 0, 0, G_OPTION_ARG_NONE, &diagnose, NULL, NULL },
     { "definition", 0, 0, G_OPTION_ARG_STRING, &definition, NULL, NULL },
     { "definition-link", 0, 0, G_OPTION_ARG_NONE, &definition_link, NULL, NULL },
-    { "slow-definition", 0, 0, G_OPTION_ARG_NONE, &slow_definition, NULL, NULL },
+    { "hover", 0, 0, G_OPTION_ARG_STRING, &hover, NULL, NULL },
+    { "slow", 0, 0, G_OPTION_ARG_NONE, &slow, NULL, NULL },
     { NULL }
   };
   g_autoptr (GOptionContext) context = g_option_context_new (NULL);
@@ -404,5 +463,6 @@ main (int   argc,
 
   g_free (log_path);
   g_free (definition);
+  g_free (hover);
   return 0;
 }

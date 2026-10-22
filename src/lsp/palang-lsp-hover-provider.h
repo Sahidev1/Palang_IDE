@@ -2,8 +2,8 @@
  *
  * A GtkSourceHoverProvider: GtkSourceView asks it what to show when the
  * mouse pointer rests over the text for a moment. It shows the messages
- * of the diagnostics under the pointer. (Phase 2c adds the server's own
- * hover information here.)
+ * of the diagnostics under the pointer, then what the server says about
+ * the name there (its type, signature, documentation).
  *
  * Added to each view by palang_lsp_manager_add_view ().
  */

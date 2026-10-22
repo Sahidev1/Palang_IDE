@@ -80,6 +80,24 @@ gboolean          palang_lsp_manager_find_definition_finish (PalangLspManager  *
                                                              guint             *column,
                                                              GError           **error);
 
+/* Asks @document's server about the name at @iter
+ * ("textDocument/hover"): its type, signature, documentation. Fails like
+ * find_definition_async (), and with G_IO_ERROR_NOT_SUPPORTED if the
+ * server doesn't offer hover information. */
+void              palang_lsp_manager_hover_async     (PalangLspManager    *self,
+                                                      PalangDocument      *document,
+                                                      const GtkTextIter   *iter,
+                                                      GCancellable        *cancellable,
+                                                      GAsyncReadyCallback  callback,
+                                                      gpointer             user_data);
+
+/* Returns: (transfer full) (nullable): the answer as Markdown (turn it
+ * into markup with palang_lsp_markdown_to_markup ()), NULL if the server
+ * has nothing to say there or on error (check @error). */
+char             *palang_lsp_manager_hover_finish    (PalangLspManager  *self,
+                                                      GAsyncResult      *result,
+                                                      GError           **error);
+
 /* Stops every server and starts the ones the open documents need. Also
  * tries again servers that had failed. */
 void              palang_lsp_manager_restart         (PalangLspManager *self);
