@@ -6,7 +6,8 @@ without reading its implementation. **The headers are the full contract**
 module is for, how the modules connect, and where later phases plug in.
 
 Updated at the end of every phase (see ARCHITECTURE.md §5).
-Last updated: end of Phase 2c (2026-10-22).
+Last updated: after the interim look-and-feel round (2026-10-22;
+guide `docs/05-how-the-look-works.md`).
 
 ## How the pieces connect
 

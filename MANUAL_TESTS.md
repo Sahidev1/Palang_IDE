@@ -285,6 +285,49 @@ toast's Details say).
       the error: its row goes away. Close the tab: its rows go away.
 - [ ] Ctrl+Shift+M also works while the terminal has the focus.
 
+## Interim — Look and feel
+
+The round between Phase 2 and 3 (PROGRESS.md, "Interim"). Start with
+`ninja -C build run`; for the app icon, install the `.deb` first
+(`tools/build-deb.sh`, then install the newest file in `build-deb/`).
+
+### 1. Logo and icons
+- [ ] After installing the `.deb`: the menu entry and the taskbar show the
+      amber leopard on a dark tile.
+- [ ] With no file open, the big leopard shows above "No Open Files".
+- [ ] The header bar, find bar (Ctrl+H), panel tabs and close buttons show
+      Palang's angular icons, with amber details (sidebar strip, `+`,
+      prompt `>`, replace arrow).
+- [ ] In the file tree, folders show a closed folder and an amber open
+      folder when expanded; `.c`/`.py` files a code icon, README/`.md` a
+      text icon, images an image icon.
+- [ ] In a C file with an error, the gutter icon is red; a Python
+      warning's is amber (they used to be grey).
+
+### 2. Colors, corners, frame
+- [ ] The window has a thin double-line frame and square corners; when
+      maximized, no frame.
+- [ ] Buttons, text fields, tabs, menus, the palette and Preferences have
+      square corners.
+- [ ] Preferences (Ctrl+,): switches are amber, not blue. Switch Style to
+      Light and back: the amber gets deeper in light mode; everything
+      stays readable.
+- [ ] Dark mode: the editor and the terminal are near-black, code colors
+      are brighter (orange keywords, teal types, green strings), the
+      current line number is amber.
+- [ ] With two files open, the selected tab joins the editor with an
+      amber line on top; the other tab is dimmed.
+- [ ] Selected rows (file tree, Problems, palette) are tinted amber with
+      a bar on the left; the shown panel page is underlined.
+- [ ] Anything too bright, too dark or hard to read? Write it below.
+
+### 3. The two fixes
+- [ ] Move the pointer over several files in the tree, then away: no row
+      stays highlighted. One click opens a file or folds a folder; a
+      double click on a folder doesn't fold it back.
+- [ ] Open a project folder, Ctrl+N, type something, Ctrl+S: the Save As
+      dialog starts in the project folder.
+
 ## Results notes
 
 

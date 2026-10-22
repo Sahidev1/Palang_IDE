@@ -63,6 +63,7 @@ Each phase's design lives in `docs/plan/`; a session reads only its own.
 | 2a | Terminal, `palang` settings command, project search, command palette + Quick Open | [phase-2](docs/plan/phase-2.md) | 1 | ✅ |
 | 2b | LSP client: core, document sync, diagnostics, go to definition (C, Python, JavaScript) | [phase-2](docs/plan/phase-2.md) | 1 | ✅ |
 | 2c | LSP hover, completion (snippets, documentation), Problems page | [phase-2](docs/plan/phase-2.md) | 1 | ✅ (manual tests pending) |
+| — | Interim: look and feel (logo, icons, amber, contrast), two fixes | PROGRESS.md "Interim" | 1 | ✅ (manual tests pending) |
 | 3 | AI autocomplete (ghost text) | [phase-3-autocomplete](docs/plan/phase-3-autocomplete.md) | 1 | |
 | 4 | Math symbols: shortcuts + palette | [phase-4-5-math](docs/plan/phase-4-5-math.md) §1–2 | 1, or bundled with the start of 5 | |
 | 5 | Inline math rendering + hidden generated code | [phase-4-5-math](docs/plan/phase-4-5-math.md) §3–7 | 1–2 | |
@@ -89,7 +90,7 @@ that isn't file content (Phase 3 ghost text, Phase 5 hidden code).
 2. **Shortcut prefix** — `_` (with the known-name rule) vs `\`.
 3. **Math rendering engine** — custom GSK layout vs MicroTeX FFI (decide at Phase 5 stage 2).
 4. **Default AI provider** — local Ollama recommended; confirm whether to ship a "Claude Haiku" preset.
-5. **Phase order** — autocomplete (3) before math (4–5), or the reverse.
+5. ~~Phase order~~ — **decided (2026-10-22): Phase 3 (autocomplete) next**, then math (4–5).
 6. **Math index base** — default "math index 1 = array index 0" with `@index 0` to override (`docs/plan/phase-4-5-math.md` §7); confirm before Phase 5.
 
 ## 6. Risks

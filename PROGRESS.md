@@ -4,6 +4,86 @@ Newest phase at the top. See [PLAN.md](PLAN.md) for the roadmap.
 
 ---
 
+## Interim — Look and feel, two fixes ✅ (2026-10-22)
+
+A short round between Phase 2 and Phase 3, asked for by sahi: Palang got
+its own identity (logo, icons, amber accent, square corners, a window
+frame) and more contrast, and two annoying behaviors were fixed. No new
+module; changes are in `data/` (icons, CSS, an editor color scheme) and a
+few small code changes.
+
+### What was built (one commit per step)
+| Commit | What |
+|---|---|
+| `100152a` | App icon: sahi's leopard logo (traced from their drawing), amber on a dark tile |
+| `0c5c9b5` | `design/logo/`: the drawing, `trace.py`, all drafts and comparison sheets |
+| `762c755` | 20 own symbolic icons (`data/icons/scalable/actions/palang-…-symbolic.svg`) in the logo's style: 45° cut corners, one amber detail; file tree icons by content type (folder/open folder, code, text, image, file) |
+| `3591b0c` | Window frame: libadwaita's no-compositor frame (`window.solid-csd`) drawn on composited desktops too |
+| `a084479` | Icon accents in the logo's amber (icon palette "warning" color) |
+| `fe92b73` | Square corners everywhere (`* { border-radius: 0 }`) |
+| `52ba366` | Accent color amber instead of blue (switches, selection, focus); info icons keep blue (`palang-info`) |
+| `6c76f6c` | More contrast in dark mode: own editor scheme `palang-dark` (near-black, brighter text, punchier syntax colors), areas a step apart, stronger lines, terminal matches; both modes: dimmed text 75%, VS Code-like selected tab (editor background + amber top line), amber selected rows, underlined panel page |
+| `b2ebb04` | Fix: the file tree left the last hovered row highlighted |
+| `7101ae9` | Fix: Save As for a new file starts in the project folder |
+
+### Verification
+- **Tests:** 15 test programs pass (no new tests: the changes are visual,
+  or covered by driving the app). ASan/UBSan clean in every run of the app.
+- **Real app** on Xvfb and once on sahi's composited desktop (window frame),
+  with screenshots: every icon in place, light and dark; folder icons
+  following expand/collapse; gutter error/warning icons now red/amber
+  (they were grey); square corners in the window, palette, Preferences;
+  amber accents in both modes; `palang-dark` loaded; the tree's hover
+  highlight gone, one click opens, a double click doesn't fold back; Save
+  As opening in the project folder (GTK's own chooser: `GDK_DEBUG=no-portals`).
+
+### Bugs found and fixed on the way
+- **File tree hover highlight** (sahi): `single-click-activate` selects
+  the row under the pointer; replaced by a click gesture per row, which
+  claims the click so double clicks don't activate twice. CLAUDE.md
+  gotcha 20.
+- **Save As started anywhere for a new file** (sahi): only a name was
+  suggested; now the window's project folder is the initial folder.
+- **GtkSourceView 5.12 lists style schemes in a resource folder but can't
+  load them** (opens the name as a file): the editor copies Palang's
+  schemes to `~/.cache/palang/styles/` at start (`add_palang_style_schemes ()`).
+- **Gutter icons were grey**: symbolic icons with `class="error"` /
+  `"warning"` parts get those colors even where no CSS applies.
+
+### Mistakes made (so they aren't repeated)
+- A test run on Xvfb reached **sahi's running Palang** over the shared
+  D-Bus session bus and opened the scratch folder in their window.
+  CLAUDE.md: check `pgrep -a palang` first, or use `dbus-run-session`.
+- A cleanup loop on sahi's display **closed every window named "Save"**:
+  the screensaver's windows (sahi restarted it) and a mate-screenshot
+  dialog. CLAUDE.md: touch only Palang's own windows, by PID.
+
+### Changes to the plan
+- **Look:** square, amber, high contrast in dark mode; decided with sahi
+  from side-by-side screenshots (sheets in `design/`).
+- **Phase order (open decision 5):** Phase 3 next, as sahi asked.
+
+### Open items
+- **Phase 2c manual tests** (MANUAL_TESTS.md) are still not run, and the
+  new "Interim" section too.
+- **Light mode** got the accent, corners, selections, but not the extra
+  contrast (no light scheme of our own); sahi didn't ask for it.
+- Window controls (minimize/maximize/close), the tree's expander arrows
+  and the lens inside search entries are still GTK's icons.
+- Save As on sahi's desktop goes through the xdg-desktop-portal file
+  chooser (xapp/gtk), which couldn't be tested here; sahi to confirm.
+- From earlier: license, Follow System on MATE, Ctrl+Space after Escape
+  (2c), "Go back" (Alt+Left).
+
+### Where to start reading
+1. `docs/05-how-the-look-works.md`.
+2. `data/style.css`, `data/style-dark.css`, `data/icons/README.md`.
+
+### Next
+Phase 3 (AI autocomplete, ghost text): see CLAUDE.md "Next step".
+
+---
+
 ## Phase 2c — Hover, completion, Problems page ✅ (2026-10-22)
 
 Resting the pointer on a name shows what its language server says about

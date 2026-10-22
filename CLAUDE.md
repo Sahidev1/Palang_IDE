@@ -128,13 +128,14 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests passed (dialog stacking fixed afterwards) |
 | 2b LSP client (core, sync, diagnostics, go to definition) | ✅ done; manual tests passed (JavaScript from the menu: full path, see PROGRESS.md 2c) |
 | 2c LSP hover, completion (snippets, Details pane), Problems page | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2c) not yet run by sahi |
-| 3 AI autocomplete · 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
+| Interim: look and feel (logo, icons, amber, contrast), tree-hover and Save As fixes | ✅ done; manual tests (MANUAL_TESTS.md, Interim) not yet run by sahi |
+| **3 AI autocomplete (ghost text)** | **next** (decided 2026-10-22) |
+| 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
-Open items: **no license chosen** (`debian/copyright` says TBD), the icon
-(`data/icons/…svg`) is a placeholder, Follow System doesn't switch on MATE
-(low priority, cause unknown), and the open decisions in PLAN.md §5
-(shortcut prefix `_` vs `\`, math rendering engine, default AI provider,
-phase order, math index base).
+Open items: **no license chosen** (`debian/copyright` says TBD; the logo
+is sahi's own design), Follow System doesn't switch on MATE (low priority,
+cause unknown), and the open decisions in PLAN.md §5 (shortcut prefix `_`
+vs `\`, math rendering engine, default AI provider, math index base).
 
 ## Code layout
 
@@ -142,6 +143,11 @@ Modules under `src/` (one folder each) are described in `ARCHITECTURE.md`
 §2 and `docs/interfaces.md`. Also: `data/ui/` holds one GtkBuilder
 template per widget (listed in `data/palang.gresource.xml`); `tests/` holds
 the g_test programs (UI ones in the `ui_tests` list of `tests/meson.build`).
+The look lives in `data/`: `style.css` + `style-dark.css`, our icons in
+`data/icons/scalable/actions/`, the editor's dark scheme in
+`data/styles/palang-dark.xml` (guide: `docs/05-how-the-look-works.md`).
+`design/` keeps the logo's source, drafts and icon sheets (not built).
+Visual changes: show sahi side-by-side screenshots before committing.
 
 ## Gotchas learned the hard way (don't rediscover these)
 
@@ -226,12 +232,38 @@ automatically in new sessions in this folder.
 
 ## Next step
 
-Phase 2 is done (PROGRESS.md, Phase 2c; guide `docs/04-how-phase-2c-works.md`).
-First read sahi's results in MANUAL_TESTS.md, Phase 2c, and investigate
-failures. Then the next phase: Phase 3 (AI autocomplete, ghost text) or
-Phase 4 (math symbols); the order is open decision 5 in PLAN.md §5.
-Discuss with sahi first; read that phase's file in `docs/plan/` and the
-"Phase 3" notes in `docs/interfaces.md` (editor/ and lsp/).
+**Phase 3: AI autocomplete (ghost text).** Decided by sahi on 2026-10-22
+(PLAN.md §5, decision 5). The interim look-and-feel round before it is
+done (PROGRESS.md, "Interim"; guide `docs/05-how-the-look-works.md`).
+
+1. **First, sahi's manual test results**, if they've filled them in:
+   MANUAL_TESTS.md, sections "Phase 2c" and "Interim". Investigate
+   failures before starting.
+2. **Read** `docs/plan/phase-3-autocomplete.md` (the design), the "Phase 3"
+   notes in `docs/interfaces.md` (editor/ and lsp/: Tab is already taken
+   three ways; ghost text must not reach language servers), and "For later
+   phases" at the end of `docs/05-how-the-look-works.md` (ghost text color
+   on the dark `#0f0f0f` background, no status bar yet).
+3. **Discuss with sahi before coding** (they like to decide first):
+   - **Default provider** (open decision 4). This machine has **no Ollama
+     and no GPU** (ThinkPad T480: Intel UHD 620, 8 threads, 31 GB RAM), so
+     the design's default (local Ollama + Qwen2.5-Coder 1.5B) would run on
+     the CPU: measure the latency before choosing. Installing Ollama needs
+     sudo (sahi runs it). The alternative is the user's own API key
+     (Anthropic Haiku, or an OpenAI-compatible service), kept in the
+     keyring. Never claude.ai subscription login (gotcha 10).
+   - **How ghost text is shown.** The design inserts it into the buffer
+     with a tag; then undo, save, the modified flag and LSP `didChange`
+     (sent from `insert-text`/`delete-range` in `PalangLspDocument`) must
+     all skip it (ARCHITECTURE.md invariants). Or draw it without touching
+     the buffer (e.g. GtkTextView's `snapshot_layer`). Prototype early.
+   - **Who gets Tab**: completion popup, snippet, ghost text, indent.
+   - **Splitting** into 3a (provider interface, adapters, settings `[ai.*]`,
+     keyring via libsecret, tests against a `SoupServer` mock) and 3b
+     (ghost text, triggers/debounce, accept/dismiss, budget meter, which
+     needs a new status bar), as PLAN.md's size estimate suggests.
+4. Libraries for it are installed: libsoup 3.4.4, libsecret 0.21.4,
+   json-glib 1.8.0 (`pkg-config --modversion …`); gnome-keyring runs.
 
 - Installed and working: clangd, pylsp + python3-pyflakes,
   typescript-language-server + TypeScript 5 (under nvm's Node 23).
