@@ -69,6 +69,10 @@ ui_tests = {
   'complaints': 'test-complaints.c',
 }
 
+# UI tests take a while on a busy computer (the .deb build runs every test
+# program at once): allow 2 minutes each instead of Meson's 30 seconds.
+ui_timeout = 120
+
 foreach name, source : ui_tests
   test_exe = executable('test-' + name,
     source,
@@ -79,9 +83,9 @@ foreach name, source : ui_tests
   )
 
   if xvfb_run.found()
-    test(name, xvfb_run, args: ['-a', test_exe], env: test_env)
+    test(name, xvfb_run, args: ['-a', test_exe], env: test_env, timeout: ui_timeout)
   else
-    test(name, test_exe, env: test_env)
+    test(name, test_exe, env: test_env, timeout: ui_timeout)
   endif
 endforeach
 
@@ -104,7 +108,8 @@ test_lsp = executable('test-lsp',
 )
 # It creates GtkSourceViews (snippet insertion), so it needs a display too.
 if xvfb_run.found()
-  test('lsp', xvfb_run, args: ['-a', test_lsp], env: test_env, depends: fake_lsp_server)
+  test('lsp', xvfb_run, args: ['-a', test_lsp], env: test_env, depends: fake_lsp_server,
+       timeout: ui_timeout)
 else
-  test('lsp', test_lsp, env: test_env, depends: fake_lsp_server)
+  test('lsp', test_lsp, env: test_env, depends: fake_lsp_server, timeout: ui_timeout)
 endif

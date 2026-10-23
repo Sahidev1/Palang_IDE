@@ -30,7 +30,8 @@ struct _PalangEditor
   /* While palang_editor_go_to () waits for the cursor to come into view
    * (see keep_scrolling_to_cursor). */
   guint scroll_tick_id;
-  guint scroll_frames_left;
+  gint64 scroll_deadline;      /* frame clock time when we give up */
+  double scroll_known_height;  /* the document's height as known so far */
   guint scroll_visible_frames;  /* frames in a row the cursor was visible */
 };
 
@@ -441,8 +442,14 @@ cursor_is_visible (PalangEditor *self)
  * lines, only over its first few frames. Until then line positions are
  * estimates, so the cursor can look visible and then move out of view when
  * the real heights arrive. So we scroll again on each frame until the
- * cursor has stayed visible for 10 frames in a row, for about a second at
- * most.
+ * cursor has stayed visible for 10 frames in a row.
+ *
+ * When to give up: GTK measures the lines in the background when it has
+ * time. On a busy computer it hardly gets any, and the view learns about
+ * one more line per frame as it scrolls (seen while building the .deb: a
+ * fixed 60 frames stopped well short of line 200). So we go on while the
+ * known height of the document keeps growing, and give up after a second
+ * without growth.
  *
  * A "tick callback" runs before every frame GTK draws for the widget,
  * until it returns G_SOURCE_REMOVE. */
@@ -452,6 +459,15 @@ keep_scrolling_to_cursor (GtkWidget     *view,
                           gpointer       user_data)
 {
   PalangEditor *self = PALANG_EDITOR (user_data);
+  GtkAdjustment *vertical = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (view));
+  gint64 now = gdk_frame_clock_get_frame_time (frame_clock);
+
+  /* The adjustment's upper bound is the document's height as known now. */
+  if (gtk_adjustment_get_upper (vertical) > self->scroll_known_height)
+    {
+      self->scroll_known_height = gtk_adjustment_get_upper (vertical);
+      self->scroll_deadline = now + G_USEC_PER_SEC;
+    }
 
   if (gtk_widget_get_height (view) > 0)
     {
@@ -467,7 +483,7 @@ keep_scrolling_to_cursor (GtkWidget     *view,
         }
     }
 
-  if (--self->scroll_frames_left == 0)
+  if (now > self->scroll_deadline)
     {
       self->scroll_tick_id = 0;
       return G_SOURCE_REMOVE;
@@ -509,7 +525,9 @@ palang_editor_go_to (PalangEditor *self,
   /* Make sure it ends up in view (see keep_scrolling_to_cursor). */
   if (self->scroll_tick_id != 0)
     gtk_widget_remove_tick_callback (GTK_WIDGET (self->view), self->scroll_tick_id);
-  self->scroll_frames_left = 60;
+  /* Frame clock times are in microseconds, like g_get_monotonic_time (). */
+  self->scroll_deadline = g_get_monotonic_time () + G_USEC_PER_SEC;
+  self->scroll_known_height = 0;
   self->scroll_visible_frames = 0;
   self->scroll_tick_id = gtk_widget_add_tick_callback (GTK_WIDGET (self->view),
                                                        keep_scrolling_to_cursor, self, NULL);

@@ -21,13 +21,15 @@
 
 typedef gboolean (*Condition) (PalangWindow *window, gpointer data);
 
-/* Runs the main loop until @condition is TRUE, failing after 5 seconds. */
+/* Runs the main loop until @condition is TRUE, failing after 30 seconds:
+ * long enough for a busy computer (the .deb build runs every test program
+ * at once), and only reached when something is really stuck. */
 static void
 wait_until (PalangWindow *window,
             Condition     condition,
             gpointer      data)
 {
-  gint64 deadline = g_get_monotonic_time () + 5 * G_USEC_PER_SEC;
+  gint64 deadline = g_get_monotonic_time () + 30 * G_USEC_PER_SEC;
 
   while (!condition (window, data))
     {
@@ -116,6 +118,22 @@ find_button (GtkWidget  *widget,
   return NULL;
 }
 
+/* Tick callback: counts the frames drawn for a widget. */
+static gboolean
+count_frame (GtkWidget     *widget,
+             GdkFrameClock *frame_clock,
+             gpointer       frames)
+{
+  (*(guint *) frames)++;
+  return G_SOURCE_CONTINUE;
+}
+
+static gboolean
+frames_drawn (PalangWindow *window, gpointer frames)
+{
+  return *(guint *) frames >= 10;
+}
+
 /* Waits for the window's alert dialog and clicks the button labelled
  * @label (e.g. "_Cancel", "_Discard", "_Save"), like a user would. Tests
  * using this must call show_window() first: dialogs need a shown window. */
@@ -125,6 +143,8 @@ answer_dialog (PalangWindow *window,
 {
   AdwDialog *dialog;
   GtkWidget *button;
+  guint frames = 0;
+  guint frame_counter;
 
   wait_until (window, dialog_is_visible, NULL);
   dialog = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (window));
@@ -134,8 +154,13 @@ answer_dialog (PalangWindow *window,
    * Clicking in the same instant it appears makes libadwaita deliver the
    * response but never finish closing the dialog (seen under Xvfb; real
    * clicks in the running app close it fine). There's no signal for
-   * "finished appearing", so we give it half a second. */
+   * "finished appearing", so we give it half a second, and at least 10
+   * frames: on a busy computer (building the .deb) half a second can be
+   * only a few frames. */
+  frame_counter = gtk_widget_add_tick_callback (GTK_WIDGET (dialog), count_frame, &frames, NULL);
   run_main_loop_for (G_USEC_PER_SEC / 2);
+  wait_until (window, frames_drawn, &frames);
+  gtk_widget_remove_tick_callback (GTK_WIDGET (dialog), frame_counter);
 
   button = find_button (GTK_WIDGET (dialog), label);
   g_assert_nonnull (button);
@@ -807,6 +832,21 @@ quick_open_listed (PalangWindow *window, gpointer n)
          GPOINTER_TO_UINT (n);
 }
 
+/* TRUE when the Quick Open list's best match is the file @name (items'
+ * ids are paths relative to the folder). */
+static gboolean
+quick_open_first_is (PalangWindow *window, gpointer name)
+{
+  AdwDialog *dialog = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (window));
+  g_autoptr (PalangPaletteItem) first = NULL;
+
+  if (!PALANG_IS_PALETTE (dialog))
+    return FALSE;
+
+  first = g_list_model_get_item (palang_palette_get_matches (PALANG_PALETTE (dialog)), 0);
+  return first != NULL && g_str_equal (palang_palette_item_get_id (first), name);
+}
+
 /* Ctrl+P lists the folder's files; typing and Enter opens one. */
 static void
 test_quick_open (Fixture *fixture, gconstpointer data)
@@ -832,8 +872,10 @@ test_quick_open (Fixture *fixture, gconstpointer data)
   dialog = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (fixture->window));
   g_object_get (dialog, "focus-widget", &entry, NULL);
   gtk_editable_set_text (GTK_EDITABLE (entry), "pan");
-  wait_until (fixture->window, quick_open_listed, GUINT_TO_POINTER (2));
-  run_main_loop_briefly ();  /* let the list re-sort */
+  /* Both files match "pan", so the list has two items before and after
+   * filtering: wait for the order instead (a fixed pause was too short on
+   * a busy computer, and Enter then opened the other file). */
+  wait_until (fixture->window, quick_open_first_is, "palang-panel.c");
 
   g_signal_emit_by_name (entry, "activate");
   g_object_unref (entry);

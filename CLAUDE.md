@@ -193,6 +193,10 @@ Visual changes: show sahi side-by-side screenshots before committing.
     once the widget has a size. Line positions in a new text view are
     *estimates* for a few frames: "the cursor is visible" can be true and
     then stop being true; wait until it stays so (`palang-editor.c`).
+    On a busy CPU the view learns only ~one line height per frame, so
+    limit such retries by progress, not by a frame count; and in tests
+    wait for the state you need, never a fixed pause (2026-10-23: the
+    .deb build, which runs all tests at once, failed this way).
 14. **GTK 4.14 list section headers:** the first header stays scrolled out
     of view when rows arrive; we show headings inside rows instead.
 15. **VTE emits `child-exited` while being destroyed:** disconnect from it
