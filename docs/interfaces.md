@@ -6,8 +6,8 @@ without reading its implementation. **The headers are the full contract**
 module is for, how the modules connect, and where later phases plug in.
 
 Updated at the end of every phase (see ARCHITECTURE.md §5).
-Last updated: after the interim look-and-feel round (2026-10-22;
-guide `docs/05-how-the-look-works.md`).
+Last updated: after the complaint box (2026-10-23), which followed the
+interim look-and-feel round (guide `docs/05-how-the-look-works.md`).
 
 ## How the pieces connect
 
@@ -30,6 +30,7 @@ main.c → PalangApplication (app/)
                │     └ "problems": PalangLspProblemsPanel (lsp/), Ctrl+Shift+M
                │           "problem-activated" → palang_window_open_file_at ()
                ├ PalangPalette (palette/) dialogs: Ctrl+Shift+P, Ctrl+P
+               ├ PalangComplaintDialog (feedback/): Ctrl+Shift+F1
                ├ PalangLspManager (lsp/), wired in palang-window-lsp.c
                │     "root" ──bound──▶ manager "folder"
                │     tabs ──▶ add/remove_document (), add_view ()
@@ -210,6 +211,24 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 - Tests: `tests/test-lsp.c` with `tests/fake-lsp-server.c` (options list
   at its top).
 
+## feedback/
+
+| Header | Use it for |
+|---|---|
+| `palang-complaints.h` | The complaints file: `palang_complaints_get_file (setting)` (empty → `~/.local/share/palang/complaints.md`), `_format_entry (time, context, text)` (`## 2026-10-23 14:05 · src/main.c:42` + text), `_append ()` (creates the file with a heading first). |
+| `palang-complaint-dialog.h` | **PalangComplaintDialog** (AdwDialog): a text box, Send / Ctrl+Enter; signal `sent`. On a write error it stays open with the text. |
+
+- **Why:** sahi complains while using Palang; Claude reads the file at
+  the start of each session (CLAUDE.md, "Next step"). Setting
+  `complaints-file` (group `[feedback]`); sahi points it at
+  `COMPLAINTS.md` in the repo.
+- Also from the Palang terminal: `palang complain TEXT…` (context
+  "terminal").
+- The file is written synchronously (one small local append, like
+  `config.ini`), not through `PalangDocument`: it isn't a document the
+  user edits. If it's open in a tab, that tab shows "changed on disk".
+- Tests: `tests/test-complaints.c`, `tests/test-command-line.c`.
+
 ## app/
 
 | Header | Use it for |
@@ -234,7 +253,7 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `win.replace`, `win.find-next`, `win.find-previous`, `win.go-to-line`,
   `win.go-to-definition` (F12), `win.restart-language-servers`,
   `win.show-problems` (Ctrl+Shift+M), `win.show-completions`
-  (Ctrl+Space).
+  (Ctrl+Space), `win.complain` (Ctrl+Shift+F1).
 - **Icons:** Palang's own, `palang-…-symbolic` (e.g. `palang-close-symbolic`),
   in `data/icons/scalable/actions/` and listed in `palang.gresource.xml`;
   how to draw one is in `data/icons/README.md`. Their accent (the
@@ -258,7 +277,8 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 - **The window is split over several files** (2b.0): `palang-window.c`
   (tabs, files, saving, session), `palang-window-panel.c` (panel pages,
   key routing), `palang-window-palette.c` (palette, Quick Open),
-  `palang-window-lsp.c` (language servers, go to definition), sharing the
+  `palang-window-lsp.c` (language servers, go to definition),
+  `palang-window-feedback.c` (the complaint box), sharing the
   struct through `palang-window-private.h`. New window wiring for a
   feature goes into its own `palang-window-<feature>.c`.
 - Tests: `tests/test-window.c` (UI, under xvfb), `tests/test-session.c`,

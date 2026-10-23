@@ -9,6 +9,7 @@
  *                            pages, and handing keys to the terminal
  *   palang-window-palette.c  the command palette and Quick Open
  *   palang-window-lsp.c      language servers for the open documents
+ *   palang-window-feedback.c the complaint box
  *
  * This header gives those files the window's struct and the few functions
  * they call in each other. It is *private*: only palang-window*.c include
@@ -114,5 +115,10 @@ void _palang_window_init_lsp           (PalangWindow *self);
 /* Lets go of the manager (its servers are asked to exit). Called from
  * dispose, before the template is disposed. */
 void _palang_window_dispose_lsp        (PalangWindow *self);
+
+/* palang-window-feedback.c */
+
+/* Installs win.complain. Called from class_init. */
+void _palang_window_class_init_feedback (GtkWidgetClass *widget_class);
 
 G_END_DECLS

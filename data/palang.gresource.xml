@@ -26,6 +26,7 @@
     <file>icons/scalable/actions/palang-tab-new-symbolic.svg</file>
     <file>icons/scalable/actions/palang-terminal-symbolic.svg</file>
     <file>icons/scalable/actions/palang-warning-symbolic.svg</file>
+    <file>ui/palang-complaint-dialog.ui</file>
     <file>ui/palang-editor.ui</file>
     <file>ui/palang-file-tree.ui</file>
     <file>ui/palang-lsp-problems-panel.ui</file>

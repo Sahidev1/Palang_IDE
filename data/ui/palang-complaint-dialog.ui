@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The complaint box (Ctrl+Shift+F1). Behaviour lives in
+     src/feedback/palang-complaint-dialog.c. -->
+<interface>
+  <template class="PalangComplaintDialog" parent="AdwDialog">
+    <property name="title">Complaint Box</property>
+    <property name="content-width">520</property>
+    <property name="content-height">300</property>
+    <property name="focus-widget">text_view</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar"/>
+        </child>
+        <property name="content">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="spacing">8</property>
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <property name="margin-bottom">12</property>
+            <child>
+              <!-- "About src/main.c:42"; hidden when no file is open. -->
+              <object class="GtkLabel" id="context_label">
+                <property name="visible">false</property>
+                <property name="xalign">0</property>
+                <property name="ellipsize">middle</property>
+                <style>
+                  <class name="dim-label"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="vexpand">true</property>
+                <property name="hscrollbar-policy">never</property>
+                <style>
+                  <class name="card"/>
+                </style>
+                <property name="child">
+                  <object class="GtkTextView" id="text_view">
+                    <property name="wrap-mode">word-char</property>
+                    <!-- Tab moves on to the Send button instead of typing a tab. -->
+                    <property name="accepts-tab">false</property>
+                    <property name="top-margin">8</property>
+                    <property name="bottom-margin">8</property>
+                    <property name="left-margin">8</property>
+                    <property name="right-margin">8</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel" id="error_label">
+                <property name="visible">false</property>
+                <property name="xalign">0</property>
+                <property name="wrap">true</property>
+                <style>
+                  <class name="error"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="spacing">12</property>
+                <child>
+                  <!-- "Goes to ~/…/COMPLAINTS.md" -->
+                  <object class="GtkLabel" id="file_label">
+                    <property name="hexpand">true</property>
+                    <property name="xalign">0</property>
+                    <property name="ellipsize">middle</property>
+                    <style>
+                      <class name="dim-label"/>
+                      <class name="caption"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton">
+                    <property name="label">Send</property>
+                    <property name="tooltip-text">Send (Ctrl+Enter)</property>
+                    <property name="action-name">complaint.send</property>
+                    <style>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

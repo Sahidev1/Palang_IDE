@@ -1147,6 +1147,7 @@ palang_window_class_init (PalangWindowClass *klass)
   _palang_window_class_init_panel (widget_class);
   _palang_window_class_init_palette (widget_class);
   _palang_window_class_init_lsp (widget_class);
+  _palang_window_class_init_feedback (widget_class);
 }
 
 static void

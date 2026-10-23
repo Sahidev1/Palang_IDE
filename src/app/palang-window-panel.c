@@ -137,6 +137,7 @@ static const char * const commands_kept_in_terminal[] = {
   "win.show-problems",
   "win.command-palette",
   "win.quick-open",
+  "win.complain",
   "app.preferences",
   "app.quit",
 };

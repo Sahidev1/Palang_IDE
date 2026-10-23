@@ -328,6 +328,23 @@ The round between Phase 2 and 3 (PROGRESS.md, "Interim"). Start with
 - [ ] Open a project folder, Ctrl+N, type something, Ctrl+S: the Save As
       dialog starts in the project folder.
 
+## Complaint box
+
+Added 2026-10-23. Run `ninja -C build run`. First, in Palang's terminal,
+point it at the repo (once; it's saved):
+`palang set complaints-file ~/Documents/projects/agentic_projects/Palang_IDE/COMPLAINTS.md`
+
+- [ ] With a file open, press Ctrl+Shift+F1: a "Complaint Box" dialog
+      with "About <file>:<line>" (the cursor's line) and "Goes to
+      ~/…/COMPLAINTS.md". Send is grey until you type something.
+- [ ] Type two lines (Enter makes a new line), press Ctrl+Enter: the
+      dialog closes, "Complaint saved" shows, and `COMPLAINTS.md` has a
+      heading at the top and your entry with the time.
+- [ ] Ctrl+Shift+F1 also works while the terminal has the focus, and from
+      the command palette ("Complain about Palang…").
+- [ ] In Palang's terminal: `palang complain the font is too small`:
+      "Saved to …", entry marked "terminal".
+
 ## Results notes
 
 

@@ -65,7 +65,7 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 meson setup build                 # debug + ASan/UBSan + -Werror by default
 ninja -C build
 ninja -C build run                # runs with the LSan suppressions
-meson test -C build               # 14 programs, 136 cases; UI tests via xvfb-run
+meson test -C build               # 16 programs; UI tests via xvfb-run
 tools/build-deb.sh                # .deb of the last *commit* into build-deb/
 ```
 
@@ -129,6 +129,7 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 2b LSP client (core, sync, diagnostics, go to definition) | ✅ done; manual tests passed (JavaScript from the menu: full path, see PROGRESS.md 2c) |
 | 2c LSP hover, completion (snippets, Details pane), Problems page | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2c) not yet run by sahi |
 | Interim: look and feel (logo, icons, amber, contrast), tree-hover and Save As fixes | ✅ done; manual tests (MANUAL_TESTS.md, Interim) not yet run by sahi |
+| Complaint box (`feedback/`, Ctrl+Shift+F1 → `COMPLAINTS.md`) | ✅ done 2026-10-23; manual tests (MANUAL_TESTS.md, Complaint box) not yet run |
 | **3 AI autocomplete (ghost text)** | **next** (decided 2026-10-22) |
 | 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
@@ -222,6 +223,9 @@ Visual changes: show sahi side-by-side screenshots before committing.
     one-click lists, put a `GtkGestureClick` on each row's contents instead
     (palette: `on_row_clicked`; file tree: `on_row_pressed`, which claims
     the click so a double click doesn't activate twice).
+21. **A GtkTextView takes Ctrl+Enter as a new line** before any shortcut
+    or binding of its dialog sees it. Catch it with a key controller on
+    the dialog in the capture phase (`palang-complaint-dialog.c`).
 
 ## Memory
 
@@ -236,6 +240,10 @@ automatically in new sessions in this folder.
 (PLAN.md §5, decision 5). The interim look-and-feel round before it is
 done (PROGRESS.md, "Interim"; guide `docs/05-how-the-look-works.md`).
 
+0. **Read sahi's complaints** in `COMPLAINTS.md` (repo root, if it
+   exists; written from Palang's complaint box, Ctrl+Shift+F1). Discuss
+   new ones with sahi before Phase 3 work; mark handled ones by adding
+   a line `→ Handled in <commit>: …` under the entry.
 1. **First, sahi's manual test results**, if they've filled them in:
    MANUAL_TESTS.md, sections "Phase 2c" and "Interim". Investigate
    failures before starting.

@@ -1,5 +1,5 @@
 palang_deps = [gtk_dep, adw_dep, gtksource_dep, vte_dep, json_dep, jsonrpc_dep]
-palang_inc  = include_directories('app', 'editor', 'lsp', 'palette', 'search', 'settings',
+palang_inc  = include_directories('app', 'editor', 'lsp', 'feedback', 'palette', 'search', 'settings',
                                   'terminal', 'workspace')
 
 # Everything except main.c lives in a static library, so unit tests can link
@@ -12,12 +12,15 @@ libpalang = static_library('palang',
   'app/palang-save-flow.c',
   'app/palang-session.c',
   'app/palang-window.c',
+  'app/palang-window-feedback.c',
   'app/palang-window-lsp.c',
   'app/palang-window-palette.c',
   'app/palang-window-panel.c',
   'editor/palang-document.c',
   'editor/palang-editor.c',
   'editor/palang-search-bar.c',
+  'feedback/palang-complaint-dialog.c',
+  'feedback/palang-complaints.c',
   'lsp/palang-lsp-client.c',
   'lsp/palang-lsp-completion-item.c',
   'lsp/palang-lsp-completion-provider.c',

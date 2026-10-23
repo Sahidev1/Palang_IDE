@@ -156,12 +156,34 @@ test_errors (Fixture *fixture, gconstpointer data)
   g_assert_cmpint (run (fixture, "reset", "a", "b", NULL), ==, 1);
 }
 
+/* `complain` adds an entry (words joined, "terminal" as the context) to
+ * the file of the complaints-file setting; without text it shows usage. */
+static void
+test_complain (Fixture *fixture, gconstpointer data)
+{
+  g_autofree char *path = g_build_filename (fixture->dir, "complaints.md", NULL);
+  g_autofree char *contents = NULL;
+
+  g_assert_cmpint (run (fixture, "set", "complaints-file", path, NULL), ==, 0);
+  g_assert_cmpint (run (fixture, "complain", "Too", "slow.", NULL), ==, 0);
+  g_assert_true (contains (fixture->output, "Saved to "));
+
+  g_assert_true (g_file_get_contents (path, &contents, NULL, NULL));
+  g_assert_true (g_str_has_suffix (contents, " · terminal\n\nToo slow.\n"));
+
+  g_assert_cmpint (run (fixture, "complain", NULL), ==, 1);
+  g_assert_cmpstr (fixture->errors->str, ==, "Usage: palang complain TEXT\n");
+  g_assert_cmpint (run (fixture, "complain", " ", NULL), ==, 1);
+
+  g_unlink (path);
+}
+
 /* The words the bash completion script offers. */
 static void
 test_complete (Fixture *fixture, gconstpointer data)
 {
   g_assert_cmpint (run (fixture, "__complete", "subcommands", NULL), ==, 0);
-  g_assert_cmpstr (fixture->output->str, ==, "help\nsettings\nget\nset\nreset\n");
+  g_assert_cmpstr (fixture->output->str, ==, "help\nsettings\nget\nset\nreset\ncomplain\n");
 
   g_assert_cmpint (run (fixture, "__complete", "names", NULL), ==, 0);
   g_assert_true (g_str_has_prefix (fixture->output->str, "color-scheme\nfont\ntab-width\n"));
@@ -187,6 +209,7 @@ main (int   argc,
   ADD_TEST ("/command-line/settings", test_settings);
   ADD_TEST ("/command-line/get-set-reset", test_get_set_reset);
   ADD_TEST ("/command-line/errors", test_errors);
+  ADD_TEST ("/command-line/complain", test_complain);
   ADD_TEST ("/command-line/complete", test_complete);
 
 #undef ADD_TEST

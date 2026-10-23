@@ -4,6 +4,37 @@ Newest phase at the top. See [PLAN.md](PLAN.md) for the roadmap.
 
 ---
 
+## Complaint box ✅ (2026-10-23)
+
+Asked for by sahi: write down complaints about Palang while using it,
+into a file both sahi and Claude read. New module `feedback/`.
+
+### What was built (one commit)
+- **Ctrl+Shift+F1** (also in the palette, and from the terminal): a
+  "Complaint Box" dialog; Ctrl+Enter or Send adds the text to the
+  complaints file with the time and the active file and cursor line
+  (`## 2026-10-23 14:05 · src/main.c:42`), then a toast confirms it.
+- **`palang complain TEXT…`** in the Palang terminal (context "terminal").
+- **Setting `complaints-file`** (`[feedback]`); empty means
+  `~/.local/share/palang/complaints.md` (an installed Palang can't know
+  where the repo is). sahi points it at the repo's `COMPLAINTS.md`.
+- CLAUDE.md "Next step" 0: read `COMPLAINTS.md` at the start of a session.
+
+### Verification
+- 16 test programs pass (new: `test-complaints`, and `complain` in
+  `test-command-line`). Real app on Xvfb: dialog, context, Ctrl+Enter,
+  toast, file contents; exit 0, ASan/UBSan clean.
+
+### Bugs found on the way
+- Ctrl+Enter made a new line instead of sending: the text view handles it
+  before the dialog's key bindings. Fixed with a capture-phase key
+  controller (CLAUDE.md gotcha 21).
+
+### Where to start reading
+`src/feedback/palang-complaints.h`, then `palang-complaint-dialog.c`.
+
+---
+
 ## Interim — Look and feel, two fixes ✅ (2026-10-22)
 
 A short round between Phase 2 and Phase 3, asked for by sahi: Palang got

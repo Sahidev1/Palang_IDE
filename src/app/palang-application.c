@@ -112,6 +112,7 @@ static const struct {
   { "win.search-project",  "Search in Folder…",    "<Control><Shift>f" },
   { "win.show-problems",   "Show Problems",        "<Control><Shift>m" },
   { "win.restart-language-servers", "Restart Language Servers", NULL },
+  { "win.complain",        "Complain about Palang…", "<Control><Shift>F1" },
   { "app.preferences",     "Preferences",          "<Control>comma" },
   { "app.quit",            "Quit",                 "<Control>q" },
 };

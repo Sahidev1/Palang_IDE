@@ -66,6 +66,7 @@ ui_tests = {
   'appearance': 'test-appearance.c',
   'terminal': 'test-terminal.c',
   'palette': 'test-palette.c',
+  'complaints': 'test-complaints.c',
 }
 
 foreach name, source : ui_tests

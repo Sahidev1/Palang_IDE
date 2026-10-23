@@ -12,6 +12,7 @@
 #include "config.h"
 
 #include "palang-command-line.h"
+#include "palang-complaints.h"
 
 /* A subcommand gets the words after its own name. */
 typedef int (*SubcommandFunc) (PalangSettings     *settings,
@@ -24,6 +25,7 @@ static int run_settings (PalangSettings *, const char * const *, GString *, GStr
 static int run_get      (PalangSettings *, const char * const *, GString *, GString *);
 static int run_set      (PalangSettings *, const char * const *, GString *, GString *);
 static int run_reset    (PalangSettings *, const char * const *, GString *, GString *);
+static int run_complain (PalangSettings *, const char * const *, GString *, GString *);
 static int run_complete (PalangSettings *, const char * const *, GString *, GString *);
 
 static const struct {
@@ -37,6 +39,7 @@ static const struct {
   { "get",        "NAME",       "Print the value of a setting", run_get },
   { "set",        "NAME VALUE", "Change a setting; it applies right away and is saved", run_set },
   { "reset",      "NAME",       "Set a setting back to its default", run_reset },
+  { "complain",   "TEXT",       "Add a complaint about Palang to the complaints file", run_complain },
   { "__complete", "",           NULL, run_complete },
 };
 
@@ -248,6 +251,45 @@ run_reset (PalangSettings     *settings,
   g_string_append_printf (output, "%s = ", args[0]);
   append_value (output, new_value);
   g_string_append (output, " (the default)\n");
+  return 0;
+}
+
+/* `palang complain the tab closes when I middle-click`: the words are
+ * joined like `set` does, so quotes aren't needed. The entry says it came
+ * from the terminal: there is no file to point at. */
+static int
+run_complain (PalangSettings     *settings,
+              const char * const *args,
+              GString            *output,
+              GString            *errors)
+{
+  g_autofree char *path = NULL;
+  g_autofree char *text = NULL;
+  g_autofree char *entry = NULL;
+  g_autofree char *where = NULL;
+  g_autoptr (GFile) file = NULL;
+  g_autoptr (GDateTime) now = g_date_time_new_now_local ();
+  g_autoptr (GError) error = NULL;
+
+  if (count_args (args) < 1)
+    return usage_error (errors, "complain");
+
+  text = g_strjoinv (" ", (char **) args);
+  if (g_strstrip (text)[0] == '\0')
+    return usage_error (errors, "complain");
+
+  g_object_get (settings, "complaints-file", &path, NULL);
+  file = palang_complaints_get_file (path);
+  entry = palang_complaints_format_entry (now, "terminal", text);
+
+  if (!palang_complaints_append (file, entry, &error))
+    {
+      g_string_append_printf (errors, "palang: couldn't save the complaint: %s\n", error->message);
+      return 1;
+    }
+
+  where = g_file_get_parse_name (file);
+  g_string_append_printf (output, "Saved to %s\n", where);
   return 0;
 }
 

@@ -33,6 +33,7 @@ working together on one concern.
 | `ai/` | completion providers, ghost text | 3 |
 | `math/` | symbol table, math parser, codegen, math blocks | 4–5 |
 | `integrations/` | Claude Code IDE integration | 6 |
+| `feedback/` | the complaint box: sahi's complaints about Palang, for Claude | between 2 and 3 |
 
 ### Rules
 
@@ -42,6 +43,7 @@ working together on one concern.
    ```
    app  →  everything else
    editor, workspace, terminal, search, palette, lsp, ai, math  →  settings
+   feedback  →  nothing of ours
    lsp, ai, math  →  editor (they work on documents and views)
    settings  →  nothing of ours
    ```

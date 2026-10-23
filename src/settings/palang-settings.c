@@ -77,6 +77,11 @@ static const Option options[] = {
   { "javascript-server", "lsp", OPTION_STRING,
     "Command that starts the language server for JavaScript and TypeScript. Empty: none.",
     .default_string = "typescript-language-server --stdio" },
+  /* The complaint box (feedback/). Empty: Palang's own data folder; see
+   * palang_complaints_get_file (). */
+  { "complaints-file", "feedback", OPTION_STRING,
+    "Markdown file the complaint box (Ctrl+Shift+F1) adds to. Empty: complaints.md in ~/.local/share/palang.",
+    .default_string = "" },
 };
 
 enum {
@@ -91,6 +96,7 @@ enum {
   PROP_C_SERVER,
   PROP_PYTHON_SERVER,
   PROP_JAVASCRIPT_SERVER,
+  PROP_COMPLAINTS_FILE,
   N_PROPS
 };
 
