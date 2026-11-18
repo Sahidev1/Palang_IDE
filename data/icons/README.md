@@ -2,7 +2,12 @@
 
 - `io.github.sahidev1.Palang.svg`: the app icon, installed into the
   system's icon theme for the menu and the taskbar (`data/meson.build`).
-  Its source and drafts are in `design/logo/`.
+  Its source and drafts are in `design/logo/`. **Keep `<svg` within the
+  file's first 256 bytes** (comments go *inside* the `<svg>` element):
+  GTK3 programs such as the MATE menu recognise an SVG by looking for
+  `<svg` there (shared-mime-info's rule), and otherwise show a generic
+  image instead of the icon. GTK4 doesn't mind, so Palang itself can't
+  show the problem.
 - `scalable/actions/palang-…-symbolic.svg`: the icons inside the app,
   bundled into the binary (`palang.gresource.xml`). GTK looks for icons
   under the app's resource path + `/icons` by itself, so a widget uses one

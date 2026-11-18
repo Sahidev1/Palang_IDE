@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Palang app icon: a leopard's face ("palang" is Persian for leopard),
-     amber on a dark tile. The face is sahi's logo design, traced from their
-     drawing into one path (fill-rule evenodd: the inner shapes cut holes). -->
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Palang app icon: a leopard's face ("palang" is Persian for leopard),
+       amber on a dark tile. The face is sahi's logo design, traced from their
+       drawing into one path (fill-rule evenodd: the inner shapes cut holes). -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#2c2f3a"/>
