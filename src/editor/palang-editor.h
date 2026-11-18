@@ -9,6 +9,7 @@
 
 #include <adwaita.h>
 
+#include "palang-bracket-pairs.h"
 #include "palang-document.h"
 #include "palang-search-bar.h"
 
@@ -28,6 +29,10 @@ GtkSourceView  *palang_editor_get_view     (PalangEditor *self);
 
 /* Returns: (transfer none) */
 PalangSearchBar *palang_editor_get_search_bar (PalangEditor *self);
+
+/* Returns: (transfer none): the view's self-closing brackets; "enabled"
+ * follows the auto-close-brackets setting. */
+PalangBracketPairs *palang_editor_get_bracket_pairs (PalangEditor *self);
 
 /* Opens the Find bar (or Find and Replace when @replace is TRUE). */
 void           palang_editor_show_search   (PalangEditor *self,

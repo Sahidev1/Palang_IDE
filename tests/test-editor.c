@@ -1,13 +1,18 @@
-/* test-editor.c — tests for an editor's Find / Replace and Go to Line.
+/* test-editor.c — tests for an editor's Find / Replace, Go to Line and
+ * self-closing brackets.
  *
  * Every test starts with an editor showing TEXT below. Searching is async,
  * so tests wait until the search bar's status (e.g. "2 of 5") shows the
- * expected value.
+ * expected value. Bracket tests set their own text, with "|" for the
+ * cursor, and call the functions the keys call (palang-bracket-pairs.h).
  */
 
 #include "config.h"
 
+#include <string.h>
+
 #include "palang-editor.h"
+#include "palang-settings.h"
 
 #define TEXT \
   "foo bar\n"         \
@@ -258,6 +263,253 @@ test_go_to_invalid (Fixture *fixture, gconstpointer data)
     g_assert_false (palang_editor_go_to (fixture->editor, invalid[i]));
 }
 
+/* ---- Self-closing brackets ---------------------------------------------- */
+
+/* Replaces the text with @text, where "|" marks the cursor, as if the file
+ * had just been opened (nothing to undo). */
+static void
+set_text_with_cursor (Fixture    *fixture,
+                      const char *text)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  const char *bar = strchr (text, '|');
+  g_autofree char *before = NULL;
+  g_autofree char *plain = NULL;
+  GtkTextIter cursor;
+
+  g_assert_nonnull (bar);
+  before = g_strndup (text, bar - text);
+  plain = g_strconcat (before, bar + 1, NULL);
+
+  gtk_text_buffer_begin_irreversible_action (buffer);
+  gtk_text_buffer_set_text (buffer, plain, -1);
+  gtk_text_buffer_end_irreversible_action (buffer);
+
+  gtk_text_buffer_get_iter_at_offset (buffer, &cursor, g_utf8_strlen (before, -1));
+  gtk_text_buffer_place_cursor (buffer, &cursor);
+}
+
+/* Returns: the text with "|" at the cursor. */
+static char *
+get_text_with_cursor (Fixture *fixture)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  GtkTextIter start, cursor, end;
+  g_autofree char *before = NULL;
+  g_autofree char *after = NULL;
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  gtk_text_buffer_get_iter_at_mark (buffer, &cursor, gtk_text_buffer_get_insert (buffer));
+  before = gtk_text_buffer_get_text (buffer, &start, &cursor, TRUE);
+  after = gtk_text_buffer_get_text (buffer, &cursor, &end, TRUE);
+  return g_strconcat (before, "|", after, NULL);
+}
+
+static void
+assert_text (Fixture    *fixture,
+             const char *expected)
+{
+  g_autofree char *text = get_text_with_cursor (fixture);
+
+  g_assert_cmpstr (text, ==, expected);
+}
+
+/* Types @text one character at a time, as the keys would: through the
+ * bracket pairs first, else inserted the normal way. */
+static void
+type (Fixture    *fixture,
+      const char *text)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  PalangBracketPairs *pairs = palang_editor_get_bracket_pairs (fixture->editor);
+
+  for (const char *p = text; *p != '\0'; p = g_utf8_next_char (p))
+    {
+      gunichar ch = g_utf8_get_char (p);
+      char utf8[8] = { 0 };
+
+      if (palang_bracket_pairs_type_char (pairs, ch))
+        continue;
+
+      g_unichar_to_utf8 (ch, utf8);
+      gtk_text_buffer_begin_user_action (buffer);
+      gtk_text_buffer_insert_interactive_at_cursor (buffer, utf8, -1, TRUE);
+      gtk_text_buffer_end_user_action (buffer);
+    }
+}
+
+static void
+test_should_close (void)
+{
+  struct {
+    gunichar opener, before, after;
+    gboolean expected;
+  } cases[] = {
+    { '(',  0,   0,    TRUE },
+    { '(',  'f', ' ',  TRUE },   /* "f(" a call */
+    { '(',  ' ', 'f',  FALSE },  /* before a word */
+    { '[',  ' ', '_',  FALSE },
+    { '{',  ' ', '7',  FALSE },
+    { '{',  ' ', '\n', TRUE },
+    { '(',  ' ', ')',  TRUE },
+    { '"',  ' ', 0,    TRUE },
+    { '"',  'x', 0,    FALSE },  /* right after a word */
+    { '\'', 'n', 't',  FALSE },  /* don't */
+    { '\'', 'n', ' ',  FALSE },
+    { '\'', '(', ')',  TRUE },
+    { 'a',  ' ', ' ',  FALSE },  /* not an opener */
+    { ')',  ' ', ' ',  FALSE },
+  };
+
+  for (guint i = 0; i < G_N_ELEMENTS (cases); i++)
+    g_assert_cmpint (palang_bracket_pairs_should_close (cases[i].opener, cases[i].before, cases[i].after),
+                     ==, cases[i].expected);
+
+  g_assert_cmpuint (palang_bracket_pairs_closer_for ('{'), ==, '}');
+  g_assert_cmpuint (palang_bracket_pairs_closer_for ('\''), ==, '\'');
+  g_assert_cmpuint (palang_bracket_pairs_closer_for ('<'), ==, 0);
+}
+
+static void
+test_brackets_pair (Fixture *fixture, gconstpointer data)
+{
+  const char *openers[] = { "(", "[", "{", "\"", "'" };
+  const char *expected[] = { "x = (|)", "x = [|]", "x = {|}", "x = \"|\"", "x = '|'" };
+
+  for (guint i = 0; i < G_N_ELEMENTS (openers); i++)
+    {
+      set_text_with_cursor (fixture, "x = |");
+      type (fixture, openers[i]);
+      assert_text (fixture, expected[i]);
+    }
+
+  /* Not before a word, and a quote not after one. */
+  set_text_with_cursor (fixture, "|foo");
+  type (fixture, "(");
+  assert_text (fixture, "(|foo");
+  set_text_with_cursor (fixture, "don|");
+  type (fixture, "'");
+  assert_text (fixture, "don'|");
+}
+
+static void
+test_brackets_step_over (Fixture *fixture, gconstpointer data)
+{
+  set_text_with_cursor (fixture, "|");
+  type (fixture, "f(a, \"b\")");
+  assert_text (fixture, "f(a, \"b\")|");
+
+  set_text_with_cursor (fixture, "|");
+  type (fixture, "((");
+  assert_text (fixture, "((|))");
+  type (fixture, "))");
+  assert_text (fixture, "(())|");
+
+  /* A closer the user typed is never stepped over. */
+  set_text_with_cursor (fixture, "(|)");
+  type (fixture, ")");
+  assert_text (fixture, "()|)");
+}
+
+/* Once the cursor has left the pair, typing its closer adds another. */
+static void
+test_brackets_forgotten_after_leaving (Fixture *fixture, gconstpointer data)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  GtkTextIter iter;
+
+  set_text_with_cursor (fixture, "x |");
+  type (fixture, "(");
+  assert_text (fixture, "x (|)");
+
+  gtk_text_buffer_get_start_iter (buffer, &iter);
+  gtk_text_buffer_place_cursor (buffer, &iter);
+  gtk_text_buffer_get_iter_at_offset (buffer, &iter, 3);
+  gtk_text_buffer_place_cursor (buffer, &iter);
+  type (fixture, ")");
+  assert_text (fixture, "x ()|)");
+}
+
+static void
+test_brackets_backspace (Fixture *fixture, gconstpointer data)
+{
+  PalangBracketPairs *pairs = palang_editor_get_bracket_pairs (fixture->editor);
+
+  set_text_with_cursor (fixture, "x|");
+  type (fixture, "[");
+  assert_text (fixture, "x[|]");
+  g_assert_true (palang_bracket_pairs_backspace (pairs));
+  assert_text (fixture, "x|");
+
+  /* Not when something is inside, nor in a pair typed by hand. */
+  type (fixture, "[a");
+  g_assert_false (palang_bracket_pairs_backspace (pairs));
+  set_text_with_cursor (fixture, "[|]");
+  g_assert_false (palang_bracket_pairs_backspace (pairs));
+}
+
+static void
+test_brackets_wrap_selection (Fixture *fixture, gconstpointer data)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  GtkTextIter start, end;
+  g_autofree char *selected = NULL;
+
+  set_text_with_cursor (fixture, "|foo bar baz");
+  gtk_text_buffer_get_iter_at_offset (buffer, &start, 4);
+  gtk_text_buffer_get_iter_at_offset (buffer, &end, 7);
+  gtk_text_buffer_select_range (buffer, &end, &start);
+
+  type (fixture, "{");
+  selected = get_selected_text (fixture);
+  g_assert_cmpstr (selected, ==, "bar");
+  assert_text (fixture, "foo {bar|} baz");
+
+  /* One undo step takes both halves away. */
+  gtk_text_buffer_undo (buffer);
+  {
+    g_autofree char *text = get_text (fixture);
+    g_assert_cmpstr (text, ==, "foo bar baz");
+  }
+}
+
+static void
+test_brackets_one_undo_step (Fixture *fixture, gconstpointer data)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  g_autofree char *redone = NULL;
+
+  set_text_with_cursor (fixture, "x = |;");
+  type (fixture, "(");
+  assert_text (fixture, "x = (|);");
+
+  gtk_text_buffer_undo (buffer);
+  assert_text (fixture, "x = |;");
+  gtk_text_buffer_redo (buffer);
+  redone = get_text (fixture);
+  g_assert_cmpstr (redone, ==, "x = ();");
+}
+
+/* Turned off in the settings: brackets are typed like any character. */
+static void
+test_brackets_setting_off (Fixture *fixture, gconstpointer data)
+{
+  PalangSettings *settings = palang_settings_get_default ();
+  PalangBracketPairs *pairs = palang_editor_get_bracket_pairs (fixture->editor);
+
+  g_assert_true (palang_bracket_pairs_get_enabled (pairs));
+
+  g_object_set (settings, "auto-close-brackets", FALSE, NULL);
+  g_assert_false (palang_bracket_pairs_get_enabled (pairs));
+
+  set_text_with_cursor (fixture, "x|");
+  type (fixture, "(\"");
+  assert_text (fixture, "x(\"|");
+
+  g_object_set (settings, "auto-close-brackets", TRUE, NULL);
+  g_assert_true (palang_bracket_pairs_get_enabled (pairs));
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -279,6 +531,14 @@ main (int   argc,
   ADD_TEST ("/editor/replace-all", test_replace_all);
   ADD_TEST ("/editor/go-to", test_go_to);
   ADD_TEST ("/editor/go-to-invalid", test_go_to_invalid);
+  g_test_add_func ("/editor/brackets/should-close", test_should_close);
+  ADD_TEST ("/editor/brackets/pair", test_brackets_pair);
+  ADD_TEST ("/editor/brackets/step-over", test_brackets_step_over);
+  ADD_TEST ("/editor/brackets/forgotten-after-leaving", test_brackets_forgotten_after_leaving);
+  ADD_TEST ("/editor/brackets/backspace", test_brackets_backspace);
+  ADD_TEST ("/editor/brackets/wrap-selection", test_brackets_wrap_selection);
+  ADD_TEST ("/editor/brackets/one-undo-step", test_brackets_one_undo_step);
+  ADD_TEST ("/editor/brackets/setting-off", test_brackets_setting_off);
 
 #undef ADD_TEST
 

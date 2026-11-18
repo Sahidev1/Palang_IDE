@@ -4,7 +4,8 @@
  * view to its document and settings, keeps the "title" and "path"
  * properties up to date (the window binds them to the tab's label and
  * tooltip), runs the Find and Go to Line bars, and reacts when another
- * program changes the file.
+ * program changes the file. Self-closing brackets are in
+ * palang-bracket-pairs.c.
  */
 
 #include "config.h"
@@ -12,6 +13,7 @@
 #include <errno.h>
 
 #include "palang-editor.h"
+#include "palang-bracket-pairs.h"
 #include "palang-settings.h"
 
 struct _PalangEditor
@@ -20,6 +22,7 @@ struct _PalangEditor
 
   PalangDocument  *document;    /* owned */
   PalangSearchBar *search_bar;  /* child widget, created in init */
+  PalangBracketPairs *bracket_pairs;  /* owned, created in constructed */
 
   /* Template children */
   GtkSourceView *view;
@@ -330,6 +333,14 @@ palang_editor_get_view (PalangEditor *self)
   return self->view;
 }
 
+PalangBracketPairs *
+palang_editor_get_bracket_pairs (PalangEditor *self)
+{
+  g_return_val_if_fail (PALANG_IS_EDITOR (self), NULL);
+
+  return self->bracket_pairs;
+}
+
 /* ---- Find / Replace ----------------------------------------------------- */
 
 PalangSearchBar *
@@ -625,6 +636,8 @@ bind_settings (PalangEditor *self)
   g_object_bind_property_full (settings, "wrap-lines", self->view, "wrap-mode",
                                G_BINDING_SYNC_CREATE,
                                wrap_lines_to_wrap_mode, NULL, NULL, NULL);
+  g_object_bind_property (settings, "auto-close-brackets", self->bracket_pairs, "enabled",
+                          G_BINDING_SYNC_CREATE);
 }
 
 static void
@@ -643,6 +656,9 @@ palang_editor_constructed (GObject *object)
                            G_CALLBACK (on_document_modified_changed), self, 0);
   g_signal_connect_object (self->document, "changed-on-disk",
                            G_CALLBACK (on_changed_on_disk), self, 0);
+
+  /* Needs the view's buffer, set just above. */
+  self->bracket_pairs = palang_bracket_pairs_new (self->view);
 
   update_style_scheme (self);
   g_signal_connect_object (adw_style_manager_get_default (), "notify::dark",
@@ -707,6 +723,7 @@ palang_editor_dispose (GObject *object)
     gtk_widget_remove_tick_callback (GTK_WIDGET (self->view), self->scroll_tick_id);
   self->scroll_tick_id = 0;
 
+  g_clear_object (&self->bracket_pairs);
   gtk_widget_dispose_template (GTK_WIDGET (self), PALANG_TYPE_EDITOR);
   g_clear_object (&self->document);
 

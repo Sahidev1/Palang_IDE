@@ -16,6 +16,7 @@
  *   show-line-numbers=true
  *   highlight-current-line=true
  *   wrap-lines=false
+ *   auto-close-brackets=true   # typing ( also adds ) after the cursor
  *
  *   [lsp]                      # language servers; empty: none
  *   c-server=clangd

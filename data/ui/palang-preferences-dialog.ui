@@ -88,6 +88,18 @@
             </child>
           </object>
         </child>
+
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title">Typing</property>
+            <child>
+              <object class="AdwSwitchRow" id="auto_close_row">
+                <property name="title">Close Brackets and Quotes</property>
+                <property name="subtitle">Typing ( also adds ) after the cursor</property>
+              </object>
+            </child>
+          </object>
+        </child>
       </object>
     </child>
   </template>

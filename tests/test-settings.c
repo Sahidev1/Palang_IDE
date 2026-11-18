@@ -65,12 +65,13 @@ static void
 test_defaults (Fixture *fixture, gconstpointer data)
 {
   g_autoptr (PalangSettings) settings = palang_settings_new_for_path (fixture->path);
-  gboolean insert_spaces, line_numbers, wrap;
+  gboolean insert_spaces, line_numbers, wrap, auto_close;
 
   g_object_get (settings,
                 "insert-spaces", &insert_spaces,
                 "show-line-numbers", &line_numbers,
                 "wrap-lines", &wrap,
+                "auto-close-brackets", &auto_close,
                 NULL);
 
   g_assert_cmpstr (palang_settings_get_color_scheme (settings), ==, "dark");
@@ -79,6 +80,7 @@ test_defaults (Fixture *fixture, gconstpointer data)
   g_assert_true (insert_spaces);
   g_assert_true (line_numbers);
   g_assert_false (wrap);
+  g_assert_true (auto_close);
   g_assert_false (g_file_test (fixture->path, G_FILE_TEST_EXISTS));
 }
 
@@ -88,22 +90,24 @@ test_save_and_reload (Fixture *fixture, gconstpointer data)
 {
   g_autoptr (PalangSettings) first = palang_settings_new_for_path (fixture->path);
   g_autoptr (PalangSettings) second = NULL;
-  gboolean wrap;
+  gboolean wrap, auto_close;
 
   g_object_set (first,
                 "color-scheme", "light",
                 "font", "JetBrains Mono 12",
                 "tab-width", 2,
                 "wrap-lines", TRUE,
+                "auto-close-brackets", FALSE,
                 NULL);
 
   second = palang_settings_new_for_path (fixture->path);
-  g_object_get (second, "wrap-lines", &wrap, NULL);
+  g_object_get (second, "wrap-lines", &wrap, "auto-close-brackets", &auto_close, NULL);
 
   g_assert_cmpstr (palang_settings_get_color_scheme (second), ==, "light");
   g_assert_cmpstr (palang_settings_get_font (second), ==, "JetBrains Mono 12");
   g_assert_cmpuint (palang_settings_get_tab_width (second), ==, 2);
   g_assert_true (wrap);
+  g_assert_false (auto_close);
 }
 
 /* Groups, keys and comments we don't know about survive a rewrite. */
@@ -265,7 +269,7 @@ test_describes_every_setting (void)
   g_auto (GStrv) choices = palang_settings_dup_choices ("color-scheme");
   g_autofree char *allowed = palang_settings_dup_allowed_values ("tab-width");
 
-  g_assert_cmpuint (g_strv_length (names), ==, 11);  /* 7 + 3 language servers + complaints-file */
+  g_assert_cmpuint (g_strv_length (names), ==, 12);  /* 8 + 3 language servers + complaints-file */
   for (guint i = 0; names[i] != NULL; i++)
     {
       g_autofree char *phrase = palang_settings_dup_allowed_values (names[i]);

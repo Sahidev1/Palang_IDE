@@ -33,6 +33,7 @@ struct _PalangPreferencesDialog
   AdwSwitchRow       *wrap_lines_row;
   AdwSpinRow         *tab_width_row;
   AdwSwitchRow       *insert_spaces_row;
+  AdwSwitchRow       *auto_close_row;
 };
 
 G_DEFINE_FINAL_TYPE (PalangPreferencesDialog, palang_preferences_dialog,
@@ -166,6 +167,7 @@ palang_preferences_dialog_class_init (PalangPreferencesDialogClass *klass)
   gtk_widget_class_bind_template_child (widget_class, PalangPreferencesDialog, wrap_lines_row);
   gtk_widget_class_bind_template_child (widget_class, PalangPreferencesDialog, tab_width_row);
   gtk_widget_class_bind_template_child (widget_class, PalangPreferencesDialog, insert_spaces_row);
+  gtk_widget_class_bind_template_child (widget_class, PalangPreferencesDialog, auto_close_row);
 }
 
 static void
@@ -195,6 +197,7 @@ palang_preferences_dialog_new (PalangSettings *settings)
   /* GBinding converts between the setting's uint and the spin row's double. */
   g_object_bind_property (settings, "tab-width", self->tab_width_row, "value", both_ways);
   g_object_bind_property (settings, "insert-spaces", self->insert_spaces_row, "active", both_ways);
+  g_object_bind_property (settings, "auto-close-brackets", self->auto_close_row, "active", both_ways);
 
   update_font_rows (self);
   g_signal_connect (settings, "notify::font", G_CALLBACK (on_font_setting_changed), self);

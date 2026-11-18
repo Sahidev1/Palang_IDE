@@ -65,6 +65,9 @@ static const Option options[] = {
   { "wrap-lines", "editor", OPTION_BOOLEAN,
     "Wrap long lines at the edge of the editor instead of scrolling sideways.",
     .default_boolean = FALSE },
+  { "auto-close-brackets", "editor", OPTION_BOOLEAN,
+    "Typing (, [, {, \" or ' also adds the closing one after the cursor.",
+    .default_boolean = TRUE },
   /* Language servers (lsp/). The value is a command line, split like a
    * shell would ("typescript-language-server --stdio"). The names end in
    * "-server" after the keys of the server table in palang-lsp-languages.c. */
@@ -93,6 +96,7 @@ enum {
   PROP_SHOW_LINE_NUMBERS,
   PROP_HIGHLIGHT_CURRENT_LINE,
   PROP_WRAP_LINES,
+  PROP_AUTO_CLOSE_BRACKETS,
   PROP_C_SERVER,
   PROP_PYTHON_SERVER,
   PROP_JAVASCRIPT_SERVER,
