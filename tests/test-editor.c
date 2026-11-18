@@ -510,6 +510,71 @@ test_brackets_setting_off (Fixture *fixture, gconstpointer data)
   g_assert_true (palang_bracket_pairs_get_enabled (pairs));
 }
 
+/* ---- Enter between brackets --------------------------------------------- */
+
+static void
+test_enter_between_brackets (Fixture *fixture, gconstpointer data)
+{
+  GtkSourceView *view = palang_editor_get_view (fixture->editor);
+  PalangBracketPairs *pairs = palang_editor_get_bracket_pairs (fixture->editor);
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+
+  /* Set on the view directly: the test doesn't depend on the settings. */
+  g_object_set (view, "tab-width", 4, "indent-width", -1, "insert-spaces-instead-of-tabs", TRUE, NULL);
+
+  set_text_with_cursor (fixture, "  if (x) {|}");
+  g_assert_true (palang_bracket_pairs_newline (pairs));
+  assert_text (fixture, "  if (x) {\n      |\n  }");
+
+  /* One undo step. */
+  gtk_text_buffer_undo (buffer);
+  {
+    g_autofree char *text = get_text (fixture);
+    g_assert_cmpstr (text, ==, "  if (x) {}");
+  }
+
+  /* Tabs, and the other brackets. */
+  g_object_set (view, "insert-spaces-instead-of-tabs", FALSE, NULL);
+  set_text_with_cursor (fixture, "\tf(|)");
+  g_assert_true (palang_bracket_pairs_newline (pairs));
+  assert_text (fixture, "\tf(\n\t\t|\n\t)");
+
+  g_object_set (view, "insert-spaces-instead-of-tabs", TRUE, "indent-width", 2, NULL);
+  set_text_with_cursor (fixture, "a = [|]");
+  g_assert_true (palang_bracket_pairs_newline (pairs));
+  assert_text (fixture, "a = [\n  |\n]");
+}
+
+/* Anywhere else, Enter is left to the view. */
+static void
+test_enter_elsewhere (Fixture *fixture, gconstpointer data)
+{
+  PalangBracketPairs *pairs = palang_editor_get_bracket_pairs (fixture->editor);
+  const char *texts[] = { "{x|}", "{|x}", "{|]", "\"|\"", "|{}", "{}|", "|" };
+
+  for (guint i = 0; i < G_N_ELEMENTS (texts); i++)
+    {
+      set_text_with_cursor (fixture, texts[i]);
+      g_assert_false (palang_bracket_pairs_newline (pairs));
+      assert_text (fixture, texts[i]);
+    }
+}
+
+/* With auto-close-brackets off, Enter between brackets still works. */
+static void
+test_enter_with_setting_off (Fixture *fixture, gconstpointer data)
+{
+  PalangBracketPairs *pairs = palang_editor_get_bracket_pairs (fixture->editor);
+
+  g_object_set (palang_editor_get_view (fixture->editor), "tab-width", 4, "indent-width", -1,
+                "insert-spaces-instead-of-tabs", TRUE, NULL);
+  palang_bracket_pairs_set_enabled (pairs, FALSE);
+
+  set_text_with_cursor (fixture, "{|}");
+  g_assert_true (palang_bracket_pairs_newline (pairs));
+  assert_text (fixture, "{\n    |\n}");
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -539,6 +604,9 @@ main (int   argc,
   ADD_TEST ("/editor/brackets/wrap-selection", test_brackets_wrap_selection);
   ADD_TEST ("/editor/brackets/one-undo-step", test_brackets_one_undo_step);
   ADD_TEST ("/editor/brackets/setting-off", test_brackets_setting_off);
+  ADD_TEST ("/editor/enter/between-brackets", test_enter_between_brackets);
+  ADD_TEST ("/editor/enter/elsewhere", test_enter_elsewhere);
+  ADD_TEST ("/editor/enter/with-setting-off", test_enter_with_setting_off);
 
 #undef ADD_TEST
 

@@ -4,6 +4,11 @@
  * phase, so we see them before the view does (see on_key_pressed ()), and
  * handled by the public functions, which tests call directly.
  *
+ * Enter between brackets ("{|}" → the closer on its own line, the cursor
+ * on an indented line in between) is here too. It is always on, also with
+ * auto-close-brackets off: it adds no character the user didn't type,
+ * only lays out the lines.
+ *
  * "Pending" pairs: a closer we added is remembered until the cursor leaves
  * the pair, so that typing it steps over it (and Backspace in an empty one
  * deletes both). A closer the user typed, or one in a file that was
@@ -335,7 +340,115 @@ palang_bracket_pairs_backspace (PalangBracketPairs *self)
   return TRUE;
 }
 
+/* ---- Enter between brackets --------------------------------------------- */
+
+/* Returns: (transfer full): the spaces and tabs at the start of @iter's
+ * line, up to @iter at most. */
+static char *
+dup_line_indentation (const GtkTextIter *iter)
+{
+  GtkTextIter start = *iter;
+  GtkTextIter end;
+
+  gtk_text_iter_set_line_offset (&start, 0);
+  end = start;
+  while (gtk_text_iter_compare (&end, iter) < 0 &&
+         (gtk_text_iter_get_char (&end) == ' ' || gtk_text_iter_get_char (&end) == '\t'))
+    gtk_text_iter_forward_char (&end);
+
+  return gtk_text_iter_get_slice (&start, &end);
+}
+
+/* Returns: (transfer full): one level of indentation, as Tab would insert
+ * it: a tab, or as many spaces as the indent width (which the editor
+ * binds to the tab-width and insert-spaces settings). */
+static char *
+dup_indent_unit (PalangBracketPairs *self)
+{
+  int width = gtk_source_view_get_indent_width (self->view);
+
+  if (!gtk_source_view_get_insert_spaces_instead_of_tabs (self->view))
+    return g_strdup ("\t");
+
+  /* -1 means "the same as the tab width". */
+  if (width <= 0)
+    width = (int) gtk_source_view_get_tab_width (self->view);
+
+  return g_strnfill (width, ' ');
+}
+
+gboolean
+palang_bracket_pairs_newline (PalangBracketPairs *self)
+{
+  gboolean editable;
+  GtkTextIter cursor, previous;
+  gunichar opener;
+  g_autofree char *indentation = NULL;
+  g_autofree char *unit = NULL;
+  g_autofree char *text = NULL;
+  int cursor_offset;
+
+  g_return_val_if_fail (PALANG_IS_BRACKET_PAIRS (self), FALSE);
+
+  editable = gtk_text_view_get_editable (GTK_TEXT_VIEW (self->view));
+  if (!editable || gtk_text_buffer_get_has_selection (self->buffer))
+    return FALSE;
+
+  /* Right between an opening bracket and its closer: "{|}". Quotes don't
+   * count: a string doesn't get a block. */
+  gtk_text_buffer_get_iter_at_mark (self->buffer, &cursor, gtk_text_buffer_get_insert (self->buffer));
+  previous = cursor;
+  if (!gtk_text_iter_backward_char (&previous))
+    return FALSE;
+  opener = gtk_text_iter_get_char (&previous);
+  if (opener != '(' && opener != '[' && opener != '{')
+    return FALSE;
+  if (gtk_text_iter_get_char (&cursor) != palang_bracket_pairs_closer_for (opener))
+    return FALSE;
+
+  /* "    if (x) {|}" becomes
+   *     "    if (x) {\n"
+   *     "        |\n"
+   *     "    }"
+   * The closer keeps the opening line's indentation; the new line in
+   * between gets one level more. */
+  indentation = dup_line_indentation (&cursor);
+  unit = dup_indent_unit (self);
+  text = g_strconcat ("\n", indentation, unit, "\n", indentation, NULL);
+
+  /* Where the cursor goes: the end of the middle line. Offsets count
+   * characters from the start of the text and, unlike iters, stay
+   * meaningful across the insertion. */
+  cursor_offset = gtk_text_iter_get_offset (&cursor) + 1 +
+                  (int) g_utf8_strlen (indentation, -1) + (int) g_utf8_strlen (unit, -1);
+
+  gtk_text_buffer_begin_user_action (self->buffer);
+  gtk_text_buffer_insert_interactive (self->buffer, &cursor, text, -1, editable);
+  gtk_text_buffer_get_iter_at_offset (self->buffer, &cursor, cursor_offset);
+  gtk_text_buffer_place_cursor (self->buffer, &cursor);
+  gtk_text_buffer_end_user_action (self->buffer);
+
+  gtk_text_view_scroll_mark_onscreen (GTK_TEXT_VIEW (self->view),
+                                      gtk_text_buffer_get_insert (self->buffer));
+  return TRUE;
+}
+
 /* ---- Keys --------------------------------------------------------------- */
+
+/* TRUE while a popup of the view is open: the completion list, or a hover
+ * tooltip. GtkSourceView shows them as GtkPopovers that are children of
+ * the view, and doesn't otherwise tell whether they are open. */
+static gboolean
+has_open_popup (PalangBracketPairs *self)
+{
+  for (GtkWidget *child = gtk_widget_get_first_child (GTK_WIDGET (self->view));
+       child != NULL;
+       child = gtk_widget_get_next_sibling (child))
+    if (GTK_IS_POPOVER (child) && gtk_widget_get_visible (child))
+      return TRUE;
+
+  return FALSE;
+}
 
 /* A key controller in the capture phase on the view's parent: it sees the
  * view's keys before the view does. It has to come before the view
@@ -354,12 +467,26 @@ on_key_pressed (GtkEventControllerKey *controller,
 {
   gunichar ch;
 
-  if (!self->enabled || !gtk_widget_has_focus (GTK_WIDGET (self->view)))
+  if (!gtk_widget_has_focus (GTK_WIDGET (self->view)))
     return GDK_EVENT_PROPAGATE;
 
   /* Ctrl+[ and the like are shortcuts, not typing. (Shift is allowed:
    * it is how "(" and "{" are typed.) */
   if (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK | GDK_META_MASK))
+    return GDK_EVENT_PROPAGATE;
+
+  /* Plain Enter. While the completion list is open, Enter belongs to it
+   * (it takes the selected entry): this controller runs before the
+   * completion's, so it has to let Enter through. */
+  if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_ISO_Enter)
+    {
+      if ((state & GDK_SHIFT_MASK) || has_open_popup (self))
+        return GDK_EVENT_PROPAGATE;
+      return palang_bracket_pairs_newline (self) ? GDK_EVENT_STOP : GDK_EVENT_PROPAGATE;
+    }
+
+  /* The rest is self-closing brackets, which can be turned off. */
+  if (!self->enabled)
     return GDK_EVENT_PROPAGATE;
 
   if (keyval == GDK_KEY_BackSpace)

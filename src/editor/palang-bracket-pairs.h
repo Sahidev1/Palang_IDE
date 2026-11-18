@@ -10,9 +10,14 @@
  * The "enabled" property turns all of this on or off (the editor binds it
  * to the auto-close-brackets setting).
  *
+ * It also lays out a new block: Enter right between "{}", "[]" or "()"
+ * puts the closer on its own line and the cursor on an indented line in
+ * between. That is always on, and leaves Enter to the completion list
+ * while that is open.
+ *
  * The keys are handled by functions that tests (and other code) can call
  * directly, without real key presses: palang_bracket_pairs_type_char (),
- * palang_bracket_pairs_backspace ().
+ * palang_bracket_pairs_backspace (), palang_bracket_pairs_newline ().
  */
 
 #pragma once
@@ -47,6 +52,15 @@ gboolean            palang_bracket_pairs_type_char    (PalangBracketPairs *self,
  * the cursor between them.
  * Returns: TRUE if it did; FALSE if Backspace should work the normal way. */
 gboolean            palang_bracket_pairs_backspace    (PalangBracketPairs *self);
+
+/* Enter: with the cursor right between an opening bracket and its closer
+ * ("{|}"), moves the closer to its own line, at the indentation of the
+ * opener's line, and puts the cursor on a new line in between, one level
+ * deeper (a tab or spaces, as the view's insert-spaces-instead-of-tabs,
+ * indent-width and tab-width say). One undo step. Works whether or not
+ * "enabled" is set.
+ * Returns: TRUE if it did; FALSE if Enter should work the normal way. */
+gboolean            palang_bracket_pairs_newline      (PalangBracketPairs *self);
 
 /* ---- Pure helpers (no widgets) ------------------------------------------ */
 
