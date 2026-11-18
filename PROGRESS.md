@@ -4,6 +4,69 @@ Newest phase at the top. See [PLAN.md](PLAN.md) for the roadmap.
 
 ---
 
+## Complaint fixes ✅ (2026-11-19)
+
+sahi's seven complaints from the complaint box (2026-10-23), fixed before
+Phase 3. Tried a new way of working: an orchestrating session plus two
+worker agents in their own git worktrees (A: `editor/`, B: `app/`), the
+orchestrator doing the icon, the sidebar, review, rebasing and docs.
+
+### What was built (one commit per complaint)
+| Commit | Complaint | What |
+|---|---|---|
+| `5511500` | Generic menu icon | The SVG's `<svg` tag sat past byte 256 (a comment above it), so GTK3 programs like the MATE menu didn't recognise the file as an image. Comment moved inside; rule in `data/icons/README.md` |
+| `e8c862f` | Bland sidebar | Faint amber leopard behind the tree (a GtkOverlay), bold amber folder name, amber line, warm glow. sahi picked mockup C of three |
+| `684c4da` | No closing bracket | `PalangBracketPairs` (`editor/`): ( [ { " ' close themselves, step over, Backspace deletes an empty pair, wrap a selection; setting `auto-close-brackets`, Preferences → Typing |
+| `4a1283f` | Enter between `{}` | Closer on its own line, cursor on an indented middle line; one undo step; leaves Enter to the completion list |
+| `bafb77c` | "Select entire line" | Ctrl+L, `win.select-line`; again adds the next line (not in the terminal: Ctrl+L clears it) |
+| `8523a64` | Panel size from a terminal | Two causes: `palang .` goes through GApplication's `open`, which didn't restore the session's panel (and then saved the default over it); and Ctrl+C / closed terminal / `kill` ended Palang before it saved. Now `open` restores the panel, and SIGINT/SIGHUP/SIGTERM quit like Ctrl+Q |
+| `0f2c604` | Terminal ↔ editor | Ctrl+` (also Ctrl+§ for Swedish keyboards, via a new `more_accels[]` table), `win.toggle-terminal-focus` |
+
+### Verification
+- 17 test programs pass (new: `test-application-run`, the whole app in a
+  child process; more cases in `test-editor`, `test-settings`,
+  `test-window`), also with 7 busy loops on the CPU; no sanitizer
+  reports.
+- Merged app on Xvfb (`dbus-run-session`, sahi's Palang was open):
+  typed `int main(void) {` Enter `f("a", (1));` → saved file exactly
+  right; Ctrl+L; Ctrl+` both ways; sidebar in dark and light; exit 0.
+- The menu icon fix checked with gdk-pixbuf (GTK3's loader): the old file
+  fails "Unrecognized image file format", the new one loads.
+
+### Decisions made (sahi can change them)
+- Quotes after a word character are never paired (`don't`; also Python's
+  `f"`/`r"`). Enter between brackets is always on, even with
+  `auto-close-brackets` off.
+- A quit signal never saves or discards documents: it saves the session
+  and asks, like Ctrl+Q. A SIGKILL after SIGTERM still loses unsaved text.
+- `palang .` still opens only what was given, not the last session's tabs.
+
+### How the parallel workers went
+- Worth it only partly: the two workers took ~14 and ~18 minutes; the
+  orchestrator meanwhile found the icon cause and made the sidebar
+  mockups. Merging was easy: one conflict (the settings count in
+  `test-settings.c`), because the worktrees started from an older commit
+  (`6b77215`, not `main`): check the base next time.
+- Each worker needed its own build dir and `dbus-run-session` for the app.
+
+### Open items
+- **Ctrl+§ on a real Swedish keyboard is untested** (Xvfb ignores keymap
+  changes): MANUAL_TESTS.md, "Complaint fixes" 3.
+- Manual tests still open: Phase 2c, Interim, Complaint box, Complaint
+  fixes (see "Start here" at the top of MANUAL_TESTS.md).
+- sahi: point the complaint box at the repo, in Palang's terminal:
+  `palang set complaints-file ~/Documents/projects/agentic_projects/Palang_IDE/COMPLAINTS.md`
+  (it now holds the old complaints, each marked "Handled in").
+
+### Where to start reading
+`src/editor/palang-bracket-pairs.h`, then the `on_quit_signal ()` and
+`get_or_create_window ()` comments in `src/app/palang-application.c`.
+
+### Next
+Phase 3 (AI autocomplete, ghost text): CLAUDE.md "Next step".
+
+---
+
 ## Complaint box ✅ (2026-10-23)
 
 Asked for by sahi: write down complaints about Palang while using it,

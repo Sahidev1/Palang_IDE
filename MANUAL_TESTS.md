@@ -5,6 +5,21 @@ it passes. If one fails, write what happened under it.
 
 Start Palang with `ninja -C build run` unless a test says otherwise.
 
+## Start here: what's still open (2026-11-19)
+
+Four sections are not done yet. In this order, one or two sittings:
+
+1. **Build and install the package once** (the menu icon and the logo
+   checks need it): `tools/build-deb.sh`, then
+   `sudo apt install ./build-deb/<newest>.deb`.
+2. **Complaint box** (~3 min), at the end of this file. Its setup step
+   points complaints at the repo's `COMPLAINTS.md`.
+3. **Complaint fixes** (~10 min), right after it.
+4. **Interim — Look and feel** (~10 min).
+5. **Phase 2c** (~20 min): hover, completion, snippets, Problems page.
+
+Then write anything odd under "Results notes" and commit.
+
 ---
 
 ## Phase 0
@@ -344,6 +359,49 @@ point it at the repo (once; it's saved):
       the command palette ("Complain about Palang…").
 - [ ] In Palang's terminal: `palang complain the font is too small`:
       "Saved to …", entry marked "terminal".
+
+## Complaint fixes
+
+Added 2026-11-19: sahi's seven complaints (`COMPLAINTS.md`, each marked
+"Handled in …"). Run `ninja -C build run` unless it says otherwise.
+
+### 1. Menu icon and sidebar
+- [ ] After installing the new `.deb`: the MATE menu entry shows the
+      amber leopard, not a generic image (if not at once, log out and in).
+- [ ] Open a folder: a faint amber leopard at the bottom of the sidebar,
+      the folder name in bold amber with an amber line under it, a slight
+      warm glow at the bottom. With a long tree, the names over the
+      leopard are fully readable and clickable. Same in Light style.
+
+### 2. Brackets and Enter
+- [ ] In a `.js` or `.c` file type `f(`: you get `f()` with the cursor
+      inside. Type `"a", (1` then `)` `)` `;`: the result is
+      `f("a", (1));` (the closers were stepped over, not doubled).
+- [ ] `x(` then Backspace: just `x`. `don't`: no extra quote. Select a
+      word and type `"`: the word is wrapped in quotes.
+- [ ] Type `if (x) {` and press Enter: `}` moves to its own line, the
+      cursor sits on an indented line in between. One Ctrl+Z undoes it.
+- [ ] With the completion list open (Ctrl+Space) between `{}`, Enter
+      still takes the entry.
+- [ ] Preferences → Typing → "Close Brackets and Quotes" off: `(` stays
+      alone. Turn it back on.
+
+### 3. Select line, terminal focus
+- [ ] Ctrl+L selects the cursor's whole line; again adds the next line.
+      In the terminal, Ctrl+L still clears the screen.
+- [ ] Ctrl+` (or **Ctrl+§**, the key left of 1 on a Swedish keyboard:
+      couldn't be tested on the virtual display) from the editor: the
+      panel opens on the Terminal and it has the focus. Again: back to
+      the editor. Write down which of the two keys works for you.
+
+### 4. Panel size from a terminal
+- [ ] In a terminal: `palang .` (the installed one). Open the panel
+      (Ctrl+J), drag it much taller, quit with Ctrl+Q. `palang .` again:
+      same height. Then from the menu: same height too.
+- [ ] Start `palang .` from a terminal, change the panel height, press
+      Ctrl+C in that terminal: Palang closes (asking first if a file has
+      unsaved changes; Cancel keeps it open). Start it again: the height
+      is kept.
 
 ## Results notes
 

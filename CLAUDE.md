@@ -67,7 +67,7 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 meson setup build                 # debug + ASan/UBSan + -Werror by default
 ninja -C build
 ninja -C build run                # runs with the LSan suppressions
-meson test -C build               # 16 programs; UI tests via xvfb-run
+meson test -C build               # 17 programs; UI tests via xvfb-run
 tools/build-deb.sh                # .deb of the last *commit* into build-deb/
 ```
 
@@ -132,6 +132,7 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 2c LSP hover, completion (snippets, Details pane), Problems page | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2c) not yet run by sahi |
 | Interim: look and feel (logo, icons, amber, contrast), tree-hover and Save As fixes | ✅ done; manual tests (MANUAL_TESTS.md, Interim) not yet run by sahi |
 | Complaint box (`feedback/`, Ctrl+Shift+F1 → `COMPLAINTS.md`); tests made robust on a busy CPU | ✅ done 2026-10-23; manual tests (MANUAL_TESTS.md, Complaint box) not yet run |
+| Complaint fixes: brackets, Enter in `{}`, Ctrl+L, Ctrl+`, panel size/signals, menu icon, sidebar | ✅ done 2026-11-19 (orchestrator + 2 worktree agents); manual tests (MANUAL_TESTS.md, Complaint fixes) not yet run |
 | **3 AI autocomplete (ghost text)** | **next** (decided 2026-10-22) |
 | 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
@@ -232,6 +233,26 @@ Visual changes: show sahi side-by-side screenshots before committing.
 21. **A GtkTextView takes Ctrl+Enter as a new line** before any shortcut
     or binding of its dialog sees it. Catch it with a key controller on
     the dialog in the capture phase (`palang-complaint-dialog.c`).
+22. **A launch with arguments (`palang .`) goes through GApplication's
+    `open`, not `activate`.** Anything restored at start must be restored
+    on both paths (`get_or_create_window ()` in `palang-application.c`).
+    Without signal handlers, Ctrl+C in the starting terminal kills Palang
+    before it saves the session (now handled with `g_unix_signal_add`).
+23. **GTK3 programs (the MATE menu) recognise an SVG only if `<svg`
+    is in its first 256 bytes**: put comments inside the element. GTK4
+    doesn't mind, so Palang itself won't show the problem.
+24. **Xvfb ignores keymap changes** (setxkbmap, xkbcomp, xmodmap): other
+    keyboard layouts (sahi's is Swedish, where ` is a dead key) can't be
+    tested there; ask sahi to try such shortcuts by hand.
+25. **Key controllers on one widget run in the order they were added**
+    (but `gtk_widget_observe_controllers ()` lists them newest first).
+    PalangBracketPairs's controller on the view's parent is added before
+    the LSP completion provider's; an open completion list shows as a
+    visible `GtkPopover` child of the view.
+26. **Worktree agents start from an older commit**, not necessarily
+    `main`'s tip (2026-11-19: `6b77215`); rebase their branches onto
+    `main` before merging, and give each its own build dir and
+    `dbus-run-session`.
 
 ## Memory
 

@@ -6,8 +6,9 @@ without reading its implementation. **The headers are the full contract**
 module is for, how the modules connect, and where later phases plug in.
 
 Updated at the end of every phase (see ARCHITECTURE.md §5).
-Last updated: after the complaint box and the busy-computer test fixes
-(2026-10-23; guide `docs/06-how-the-complaint-box-works.md`).
+Last updated: after the complaint fixes (2026-11-19: self-closing
+brackets, select line, terminal focus, quitting on signals; see
+PROGRESS.md).
 
 ## How the pieces connect
 
@@ -47,7 +48,7 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 
 | Header | Use it for |
 |---|---|
-| `palang-settings.h` | `palang_settings_get_default ()`: the app-wide preferences. Each preference is a GObject **property** (`color-scheme`, `font`, `tab-width`, `insert-spaces`, `show-line-numbers`, `highlight-current-line`, `wrap-lines`): bind to it or listen to `notify::<name>`. |
+| `palang-settings.h` | `palang_settings_get_default ()`: the app-wide preferences. Each preference is a GObject **property** (`color-scheme`, `font`, `tab-width`, `insert-spaces`, `show-line-numbers`, `highlight-current-line`, `wrap-lines`, `auto-close-brackets`): bind to it or listen to `notify::<name>`. |
 | `palang-appearance.h` | Called once at startup; applies light/dark and the editor font. Nothing else needs it. |
 
 - **Settings by name, as text** (for the `palang` command):
@@ -68,8 +69,17 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 |---|---|
 | `palang-document.h` | **PalangDocument**, one open file. It *is* a `GtkSourceBuffer` (use any GtkTextBuffer/GtkSourceBuffer API on it). Async load/save, keeps encoding and line endings, picks the language. Properties: `file` (GFile, NULL if never saved; also notified on every save), `title`. Signals: `changed-on-disk (gboolean deleted)`, for other programs' changes only; `saved`, after our own saves (location and language already updated). |
 | `palang-editor.h` | **PalangEditor**, the widget in one tab: the view (`palang_editor_get_view ()` → `GtkSourceView`), the Find bar, Go to Line, the "changed on disk" banner. Properties: `document`, `title` ("• main.c" when modified), `path` ("~/…", for tooltips). |
+| `palang-bracket-pairs.h` | **PalangBracketPairs**, one per view (`palang_editor_get_bracket_pairs ()`): ( [ { " ' close themselves (property `enabled`, bound to the `auto-close-brackets` setting), and Enter between `{}`/`[]`/`()` opens an indented block (always on). The key handlers are public functions (`_type_char ()`, `_backspace ()`, `_newline ()`), which tests call instead of sending keys. |
 | `palang-search-bar.h` | The Find/Replace bar inside an editor. Usually reached through `palang_editor_show_search ()` / `palang_editor_find_next ()`. |
 
+- `palang_editor_select_line ()` (Ctrl+L, `win.select-line`): the whole
+  line; again adds the next one.
+- **Keys reach PalangBracketPairs first:** its key controller sits on the
+  view's parent (the GtkScrolledWindow) in the capture phase, added
+  before the LSP completion provider's, so it runs before it. It leaves
+  Enter alone while a `GtkPopover` child of the view is visible (the
+  completion list; GtkSourceView has no API to ask). **Phase 3:** ghost
+  text accepting with Tab goes in the same place; mind this order.
 - **Rule:** all file I/O goes through `PalangDocument`, never through
   `GtkSourceFileLoader`/`Saver` or GIO directly.
 - **Color schemes:** light uses GtkSourceView's `Adwaita`, dark uses our
@@ -237,7 +247,7 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
 |---|---|
 | `palang-application.h` | Creating the app; `palang_application_get_commands ()`: the command table as a list. Also handles the command line: `palang <files>`, and in the Palang terminal `palang help/settings/get/set/reset`. |
 | `palang-command-line.h` | The `palang` subcommands, as text in and text out (`palang_command_line_run ()`). |
-| `palang-window.h` | Open a file (also `palang_window_open_file_at (file, line, column)`) or folder, new document, `get_active_editor ()` (also the **`active-editor` property**: listen to `notify::active-editor`), `get_n_editors ()`, `get_folder ()`, `get_panel ()`, `get_terminal ()`, `get_search_panel ()`, session capture/restore. |
+| `palang-window.h` | `palang_window_save_session ()` (also called on a quit signal), `palang_window_restore_layout ()` (only the panel: for a new window opened with files, `palang .`). Open a file (also `palang_window_open_file_at (file, line, column)`) or folder, new document, `get_active_editor ()` (also the **`active-editor` property**: listen to `notify::active-editor`), `get_n_editors ()`, `get_folder ()`, `get_panel ()`, `get_terminal ()`, `get_search_panel ()`, session capture/restore. |
 | `palang-panel.h` | **PalangPanel**, the bottom panel: `palang_panel_add_page (panel, widget, id, title, icon)`, visible page by id. Show/hide with `gtk_widget_set_visible ()`. |
 | `palang-save-flow.h` | `palang_save_document_async ()`: save with the dialogs a user expects (Save As, "changed on disk, overwrite?"). Anything that saves should use it. |
 | `palang-session.h` | The `PalangSession` struct and `session.ini` read/write (now also `show-panel`, `panel-height`, `panel-page`). |
@@ -255,7 +265,17 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   `win.replace`, `win.find-next`, `win.find-previous`, `win.go-to-line`,
   `win.go-to-definition` (F12), `win.restart-language-servers`,
   `win.show-problems` (Ctrl+Shift+M), `win.show-completions`
-  (Ctrl+Space), `win.complain` (Ctrl+Shift+F1).
+  (Ctrl+Space), `win.complain` (Ctrl+Shift+F1), `win.select-line`
+  (Ctrl+L), `win.toggle-terminal-focus` (Ctrl+`, also Ctrl+§).
+- **A second shortcut** for a command: a row in `more_accels[]` in
+  `palang-application.c` (the palette shows only the first).
+- **Quitting on a signal:** SIGINT, SIGHUP and SIGTERM (`g_unix_signal_add ()`
+  in `startup`) save the session and close each window like Ctrl+Q, so
+  unsaved changes are asked about; a signal never saves or discards a
+  document.
+- **`activate` vs `open`:** a launch with files or a folder (`palang .`)
+  goes through `open`, not `activate`; anything restored at start must be
+  restored on both paths (`get_or_create_window ()`).
 - **Icons:** Palang's own, `palang-…-symbolic` (e.g. `palang-close-symbolic`),
   in `data/icons/scalable/actions/` and listed in `palang.gresource.xml`;
   how to draw one is in `data/icons/README.md`. Their accent (the
@@ -284,7 +304,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   struct through `palang-window-private.h`. New window wiring for a
   feature goes into its own `palang-window-<feature>.c`.
 - Tests: `tests/test-window.c` (UI, under xvfb), `tests/test-session.c`,
-  `tests/test-application.c`, `tests/test-command-line.c`.
+  `tests/test-application.c`, `tests/test-command-line.c`,
+  `tests/test-application-run.c` (the whole app in a child process, with
+  its own app ID and state folder: signals, `palang <folder>`).
 
 ## Testing helpers
 
