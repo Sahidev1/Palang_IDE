@@ -25,4 +25,6 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, ripgrep
 Description: lightweight native IDE for Linux
  Palang is a fast, lightweight code editor built with GTK 4, libadwaita
  and GtkSourceView: tabs, a folder tree, find and replace, syntax
- highlighting for many languages, and light and dark styles.
+ highlighting for many languages, light and dark styles, an integrated
+ terminal, project-wide search, a command palette, and language servers
+ (diagnostics, go to definition, hover, completion).

@@ -57,7 +57,9 @@ Written 2026-10-20 at the end of Phase 1; reading order added the same day.
 - Installed tools: `xvfb` / `xvfb-run`, `xdotool`, `wmctrl`, ImageMagick
   `import`, `gdb`, `valgrind`, `desktop-file-validate`, `ripgrep` (`rg`).
 - Project path: `/home/ali/Documents/projects/agentic_projects/Palang_IDE`
-  (git repo, branch `main`, no remote). App ID: `io.github.sahidev1.Palang`.
+  (git repo, branch `main`; remote `origin` = github.com/Sahidev1/Palang_IDE,
+  **private** since 2026-10-23: sahi decides when to make it public, which
+  needs a license first). App ID: `io.github.sahidev1.Palang`.
 
 ## Build, run, test
 
@@ -129,13 +131,13 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 2b LSP client (core, sync, diagnostics, go to definition) | ✅ done; manual tests passed (JavaScript from the menu: full path, see PROGRESS.md 2c) |
 | 2c LSP hover, completion (snippets, Details pane), Problems page | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2c) not yet run by sahi |
 | Interim: look and feel (logo, icons, amber, contrast), tree-hover and Save As fixes | ✅ done; manual tests (MANUAL_TESTS.md, Interim) not yet run by sahi |
-| Complaint box (`feedback/`, Ctrl+Shift+F1 → `COMPLAINTS.md`) | ✅ done 2026-10-23; manual tests (MANUAL_TESTS.md, Complaint box) not yet run |
+| Complaint box (`feedback/`, Ctrl+Shift+F1 → `COMPLAINTS.md`); tests made robust on a busy CPU | ✅ done 2026-10-23; manual tests (MANUAL_TESTS.md, Complaint box) not yet run |
 | **3 AI autocomplete (ghost text)** | **next** (decided 2026-10-22) |
 | 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
 Open items: **no license chosen** (`debian/copyright` says TBD; the logo
-is sahi's own design), Follow System doesn't switch on MATE (low priority,
-cause unknown), and the open decisions in PLAN.md §5 (shortcut prefix `_`
+is sahi's own design; needed before the GitHub repo goes public), Follow
+System doesn't switch on MATE (low priority, cause unknown), and the open decisions in PLAN.md §5 (shortcut prefix `_`
 vs `\`, math rendering engine, default AI provider, math index base).
 
 ## Code layout
@@ -169,10 +171,10 @@ Visual changes: show sahi side-by-side screenshots before committing.
    decides, call `gtk_window_destroy ()` directly.
 7. **UI tests:** dialogs only fully close in a *shown* window (use
    `show_window ()`); click their buttons (`answer_dialog` finds the
-   button by label) and wait half a second after the dialog appears before
-   clicking; animations are disabled in tests. In GTK4 a window's
-   `destroy` signal won't fire while the test holds a reference; check
-   `gtk_window_get_toplevels ()` instead.
+   button by label), which waits half a second *and* 10 frames after the
+   dialog appears before clicking; animations are disabled in tests. In
+   GTK4 a window's `destroy` signal won't fire while the test holds a
+   reference; check `gtk_window_get_toplevels ()` instead.
 8. **Pango marks weight/style as set even when normal.**
 9. **debhelper passes `--buildtype=plain`**; don't add `-Dbuildtype`.
 10. **AI/subscription terms:** for autocomplete use API keys (user's own)

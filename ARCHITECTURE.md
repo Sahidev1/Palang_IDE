@@ -72,7 +72,9 @@ working together on one concern.
 ## 3. Invariants (must stay true in every phase)
 
 - **All file I/O goes through `PalangDocument`.** Later features (hidden
-  regions, ghost text) hook in there.
+  regions, ghost text) hook in there. (This is about the files the user
+  edits; Palang's own files, like `config.ini` or the complaints file,
+  are written by their module.)
 - **Hidden code stays in the buffer.** Math code is hidden with an
   `invisible` text tag, not removed, so saving writes the buffer as-is.
 - **Ghost text is never saved, never enters undo history, never sent to a

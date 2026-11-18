@@ -30,8 +30,35 @@ into a file both sahi and Claude read. New module `feedback/`.
   before the dialog's key bindings. Fixed with a capture-phase key
   controller (CLAUDE.md gotcha 21).
 
+### Afterwards: tests that hold up on a busy computer (`a395a8f`)
+`tools/build-deb.sh` failed for sahi in `test-window`: the `.deb` build
+runs all 16 test programs at once. With every CPU thread busy,
+`test-window` failed every time, also on the commit before the complaint
+box, so the extra test program had only tipped it over.
+- **`open-file-at`, a real (small) bug:** under load the text view learns
+  only about one line height per frame, and "keep scrolling until the
+  cursor is visible" stopped after 60 frames, far short of line 200. It
+  now continues while the document's known height grows, and gives up
+  after a second without growth (`palang-editor.c`).
+- **`quick-open`:** pressed Enter after a fixed 200 ms, sometimes before
+  the list re-sorted; now waits for the wanted file to be first.
+- **`close-modified-tab-cancel-then-discard`** (sahi's failure):
+  `answer_dialog ()` now also waits 10 frames of the dialog.
+- `wait_until ()` gives up after 30 s (was 5 s); UI test programs get
+  2 minutes (`ui_timeout`). Under full CPU load the suite passed 3 of 3
+  runs, `test-window` 6 of 6; the real `.deb` build passed.
+- CLAUDE.md: gotcha 13 extended (limit retries by progress; in tests wait
+  for a state, never a fixed pause), gotcha 7 updated.
+
+### Docs brought up to date (2026-11-18)
+README (2b/2c features, shortcuts, the missing `libjsonrpc-glib-1.0-dev`,
+language servers, files), the package description, PLAN.md roadmap,
+CLAUDE.md (GitHub remote, private), `docs/interfaces.md` (testing rules),
+and a guide: `docs/06-how-the-complaint-box-works.md`.
+
 ### Where to start reading
-`src/feedback/palang-complaints.h`, then `palang-complaint-dialog.c`.
+`docs/06-how-the-complaint-box-works.md`, then
+`src/feedback/palang-complaints.h` and `palang-complaint-dialog.c`.
 
 ---
 

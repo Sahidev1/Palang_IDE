@@ -6,8 +6,8 @@ without reading its implementation. **The headers are the full contract**
 module is for, how the modules connect, and where later phases plug in.
 
 Updated at the end of every phase (see ARCHITECTURE.md §5).
-Last updated: after the complaint box (2026-10-23), which followed the
-interim look-and-feel round (guide `docs/05-how-the-look-works.md`).
+Last updated: after the complaint box and the busy-computer test fixes
+(2026-10-23; guide `docs/06-how-the-complaint-box-works.md`).
 
 ## How the pieces connect
 
@@ -79,7 +79,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   scheme: the XML, a gresource line, a name in `add_palang_style_schemes ()`.
   The terminal's background matches it (`palang-terminal.c`).
 - `palang_editor_go_to ()` also works in a tab opened a moment ago (it
-  keeps scrolling until the cursor is visible).
+  keeps scrolling until the cursor is visible, for as long as the view is
+  still learning its lines' heights: on a busy computer that can take
+  seconds).
 - **Extension points:** `lsp/` (2b) works on the document (text,
   changes via the buffer's `insert-text`/`delete-range` signals, language
   via `gtk_source_buffer_get_language ()`, tags and source marks for
@@ -290,5 +292,10 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   (`test_env` in the top `meson.build`). New UI test programs go in the
   `ui_tests` list in `tests/meson.build`.
 - `tests/test-window.c` has helpers for real dialogs: `show_window ()`,
-  `answer_dialog ()` (clicks a button by its label). See CLAUDE.md
-  gotcha 7 for the timing rules.
+  `answer_dialog ()` (clicks a button by its label, after half a second
+  and 10 frames). See CLAUDE.md gotchas 7 and 13 for the timing rules.
+- **Tests must hold up on a busy computer:** the `.deb` build runs all
+  test programs at once. Wait for the state you need (`wait_until ()`,
+  which gives up after 30 s), never a fixed pause; UI test programs get
+  2 minutes each (`ui_timeout` in `tests/meson.build`). To check, run a
+  test while 7 busy loops (`sh -c 'while :; do :; done'`) use the CPU.

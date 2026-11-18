@@ -64,6 +64,7 @@ Each phase's design lives in `docs/plan/`; a session reads only its own.
 | 2b | LSP client: core, document sync, diagnostics, go to definition (C, Python, JavaScript) | [phase-2](docs/plan/phase-2.md) | 1 | ✅ |
 | 2c | LSP hover, completion (snippets, documentation), Problems page | [phase-2](docs/plan/phase-2.md) | 1 | ✅ (manual tests pending) |
 | — | Interim: look and feel (logo, icons, amber, contrast), two fixes | PROGRESS.md "Interim" | 1 | ✅ (manual tests pending) |
+| — | Complaint box (`feedback/`, Ctrl+Shift+F1 → `COMPLAINTS.md`); tests that hold up on a busy computer | PROGRESS.md "Complaint box" | 1 | ✅ (manual tests pending) |
 | 3 | AI autocomplete (ghost text) | [phase-3-autocomplete](docs/plan/phase-3-autocomplete.md) | 1 | |
 | 4 | Math symbols: shortcuts + palette | [phase-4-5-math](docs/plan/phase-4-5-math.md) §1–2 | 1, or bundled with the start of 5 | |
 | 5 | Inline math rendering + hidden generated code | [phase-4-5-math](docs/plan/phase-4-5-math.md) §3–7 | 1–2 | |
