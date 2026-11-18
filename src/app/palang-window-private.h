@@ -82,7 +82,8 @@ void _palang_window_show_toast (PalangWindow *self,
 
 /* palang-window-panel.c */
 
-/* Installs win.toggle-panel and win.search-project. Called from class_init. */
+/* Installs win.toggle-panel, win.toggle-terminal-focus and
+ * win.search-project. Called from class_init. */
 void _palang_window_class_init_panel (GtkWidgetClass *widget_class);
 
 /* Adds the key controller that hands keys to the terminal. Called from init

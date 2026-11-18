@@ -128,12 +128,27 @@ static const struct {
   { "win.show-completions", "Show Completions",    "<Control>space" },
   { "win.toggle-sidebar",  "Toggle Sidebar",       "F9" },
   { "win.toggle-panel",    "Toggle Panel",         "<Control>j" },
+  { "win.toggle-terminal-focus", "Toggle Terminal Focus", "<Control>grave" },
   { "win.search-project",  "Search in Folder…",    "<Control><Shift>f" },
   { "win.show-problems",   "Show Problems",        "<Control><Shift>m" },
   { "win.restart-language-servers", "Restart Language Servers", NULL },
   { "win.complain",        "Complain about Palang…", "<Control><Shift>F1" },
   { "app.preferences",     "Preferences",          "<Control>comma" },
   { "app.quit",            "Quit",                 "<Control>q" },
+};
+
+/* Second shortcuts, for keyboard layouts on which a command's own key is
+ * hard to press. The command palette shows only the one in commands[].
+ *
+ * Ctrl+`: on Swedish and other Nordic keyboards, ` is a dead key (Shift+´,
+ * then another key), so Ctrl+` can't be pressed. The key where US
+ * keyboards have ` (left of 1) types § there, and VS Code users on those
+ * keyboards press Ctrl+§ for its terminal; so Ctrl+§ works too. */
+static const struct {
+  const char *action;
+  const char *accel;
+} more_accels[] = {
+  { "win.toggle-terminal-focus", "<Control>section" },
 };
 
 /* Returns: (transfer none): the existing window, or a new one. A new
@@ -223,12 +238,21 @@ palang_application_startup (GApplication *app)
   for (guint i = 0; i < G_N_ELEMENTS (commands); i++)
     {
       /* An action can have several shortcuts, so GTK takes a
-       * NULL-terminated list; ours have one at most. */
-      const char *accels[] = { commands[i].accel, NULL };
+       * NULL-terminated list: the command's own, then any in more_accels.
+       * GStrvBuilder builds such a list. */
+      g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
+      g_auto (GStrv) accels = NULL;
 
       if (commands[i].accel != NULL)
-        gtk_application_set_accels_for_action (GTK_APPLICATION (app),
-                                               commands[i].action, accels);
+        g_strv_builder_add (builder, commands[i].accel);
+      for (guint j = 0; j < G_N_ELEMENTS (more_accels); j++)
+        if (g_str_equal (more_accels[j].action, commands[i].action))
+          g_strv_builder_add (builder, more_accels[j].accel);
+
+      accels = g_strv_builder_end (builder);
+      if (accels[0] != NULL)
+        gtk_application_set_accels_for_action (GTK_APPLICATION (app), commands[i].action,
+                                               (const char * const *) accels);
     }
 
   /* A signal interrupts the program wherever it is, outside the main loop,

@@ -627,6 +627,56 @@ test_toggle_panel (Fixture *fixture, gconstpointer data)
   g_assert_false (gtk_widget_get_visible (panel));
 }
 
+/* TRUE if the keyboard focus is in @widget or one of its children. */
+static gboolean
+focus_is_in (PalangWindow *window, gpointer widget)
+{
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (window));
+
+  return focus != NULL && (focus == widget || gtk_widget_is_ancestor (focus, widget));
+}
+
+/* Ctrl+`: from the editor to the terminal (showing the hidden panel and
+ * switching it to the Terminal page), back to the editor (the panel stays),
+ * and to the terminal again. Without a tab, the focus stays in the
+ * terminal. */
+static void
+test_toggle_terminal_focus (Fixture *fixture, gconstpointer data)
+{
+  GtkWidget *window = GTK_WIDGET (fixture->window);
+  PalangPanel *panel = palang_window_get_panel (fixture->window);
+  GtkWidget *terminal = GTK_WIDGET (palang_window_get_terminal (fixture->window));
+  GtkWidget *editor;
+
+  show_window (fixture->window);
+  palang_window_new_document (fixture->window);
+  editor = GTK_WIDGET (palang_window_get_active_editor (fixture->window));
+  gtk_widget_grab_focus (editor);
+  palang_panel_set_visible_page (panel, "search");
+  g_assert_false (gtk_widget_get_visible (GTK_WIDGET (panel)));
+
+  gtk_widget_activate_action (window, "win.toggle-terminal-focus", NULL);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (panel)));
+  g_assert_cmpstr (palang_panel_get_visible_page (panel), ==, "terminal");
+  wait_until (fixture->window, focus_is_in, terminal);
+
+  gtk_widget_activate_action (window, "win.toggle-terminal-focus", NULL);
+  wait_until (fixture->window, focus_is_in, editor);
+  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (panel)));
+
+  gtk_widget_activate_action (window, "win.toggle-terminal-focus", NULL);
+  wait_until (fixture->window, focus_is_in, terminal);
+
+  /* The (unmodified) tab closes without a question. */
+  gtk_widget_activate_action (window, "win.close-tab", NULL);
+  g_assert_null (palang_window_get_active_editor (fixture->window));
+  gtk_widget_grab_focus (terminal);
+  wait_until (fixture->window, focus_is_in, terminal);
+  gtk_widget_activate_action (window, "win.toggle-terminal-focus", NULL);
+  run_main_loop_briefly ();
+  g_assert_true (focus_is_in (fixture->window, terminal));
+}
+
 /* Within 2 pixels: the divider's handle takes a pixel of the space. */
 static gboolean
 panel_height_is (PalangWindow *window, gpointer height)
@@ -944,6 +994,7 @@ main (int   argc,
   ADD_TEST ("/window/dup-session", test_dup_session);
   ADD_TEST ("/window/restore-session", test_restore_session);
   ADD_TEST ("/window/toggle-panel", test_toggle_panel);
+  ADD_TEST ("/window/toggle-terminal-focus", test_toggle_terminal_focus);
   ADD_TEST ("/window/panel-session", test_panel_session);
   ADD_TEST ("/window/active-editor-property", test_active_editor_property);
   ADD_TEST ("/window/terminal-follows-folder", test_terminal_follows_folder);

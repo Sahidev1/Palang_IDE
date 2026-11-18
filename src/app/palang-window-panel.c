@@ -7,7 +7,8 @@
  *   - keeps the panel's height when it is hidden and shown again
  *   - creates the Terminal and Search pages and connects them
  *   - hands keys to the terminal while it has the focus
- *   - the actions win.toggle-panel (Ctrl+J) and win.search-project
+ *   - the actions win.toggle-panel (Ctrl+J), win.toggle-terminal-focus
+ *     (Ctrl+`) and win.search-project
  */
 
 #include "config.h"
@@ -132,6 +133,7 @@ add_terminal_page (PalangWindow *self)
  * the command table (palang-application.c). */
 static const char * const commands_kept_in_terminal[] = {
   "win.toggle-panel",
+  "win.toggle-terminal-focus",
   "win.toggle-sidebar",
   "win.search-project",
   "win.show-problems",
@@ -262,6 +264,33 @@ toggle_panel_action (GtkWidget  *widget,
     palang_panel_focus_page (self->panel);
 }
 
+/* Ctrl+`: jump between the terminal and the text being edited, without
+ * hiding the panel (Ctrl+J would). From the terminal, the focus goes to the
+ * selected tab's editor (if there is no tab, it stays where it is). From
+ * anywhere else, it goes to the terminal: the panel is shown and switched
+ * to the Terminal page first if needed (showing the terminal the first
+ * time starts its shell). */
+static void
+toggle_terminal_focus_action (GtkWidget  *widget,
+                              const char *action_name,
+                              GVariant   *parameter)
+{
+  PalangWindow *self = PALANG_WINDOW (widget);
+  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
+  PalangEditor *editor = palang_window_get_active_editor (self);
+
+  if (focus != NULL && gtk_widget_is_ancestor (focus, GTK_WIDGET (self->terminal)))
+    {
+      if (editor != NULL)
+        gtk_widget_grab_focus (GTK_WIDGET (editor));
+      return;
+    }
+
+  gtk_widget_set_visible (GTK_WIDGET (self->panel), TRUE);
+  palang_panel_set_visible_page (self->panel, "terminal");
+  palang_panel_focus_page (self->panel);
+}
+
 /* Ctrl+Shift+F: the Search page, with the selected text (if it's on one
  * line) as what to search for. */
 static void
@@ -290,6 +319,8 @@ void
 _palang_window_class_init_panel (GtkWidgetClass *widget_class)
 {
   gtk_widget_class_install_action (widget_class, "win.toggle-panel", NULL, toggle_panel_action);
+  gtk_widget_class_install_action (widget_class, "win.toggle-terminal-focus", NULL,
+                                   toggle_terminal_focus_action);
   gtk_widget_class_install_action (widget_class, "win.search-project", NULL, search_project_action);
 }
 
