@@ -42,6 +42,12 @@ void           palang_editor_show_search   (PalangEditor *self,
 void           palang_editor_find_next     (PalangEditor *self,
                                             gboolean      forward);
 
+/* Selects the cursor's whole line, newline included, with the cursor at
+ * the start of the next line. If whole lines are already selected, adds
+ * the next line to the selection; a selection that isn't whole lines
+ * grows to the whole lines it touches. */
+void           palang_editor_select_line   (PalangEditor *self);
+
 /* Opens the "Go to line" bar. */
 void           palang_editor_show_go_to    (PalangEditor *self);
 

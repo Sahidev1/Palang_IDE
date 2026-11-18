@@ -155,6 +155,7 @@ on_n_pages_changed (AdwTabView   *tab_view,
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.find-next", has_tabs);
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.find-previous", has_tabs);
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.go-to-line", has_tabs);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "win.select-line", has_tabs);
 }
 
 /* Adds a tab for @document, selects it and focuses its text. */
@@ -1013,6 +1014,17 @@ go_to_line_action (GtkWidget  *widget,
 }
 
 static void
+select_line_action (GtkWidget  *widget,
+                    const char *action_name,
+                    GVariant   *parameter)
+{
+  PalangEditor *editor = palang_window_get_active_editor (PALANG_WINDOW (widget));
+
+  if (editor != NULL)
+    palang_editor_select_line (editor);
+}
+
+static void
 save_action (GtkWidget  *widget,
              const char *action_name,
              GVariant   *parameter)
@@ -1144,6 +1156,7 @@ palang_window_class_init (PalangWindowClass *klass)
   gtk_widget_class_install_action (widget_class, "win.find-next", NULL, find_next_action);
   gtk_widget_class_install_action (widget_class, "win.find-previous", NULL, find_next_action);
   gtk_widget_class_install_action (widget_class, "win.go-to-line", NULL, go_to_line_action);
+  gtk_widget_class_install_action (widget_class, "win.select-line", NULL, select_line_action);
   _palang_window_class_init_panel (widget_class);
   _palang_window_class_init_palette (widget_class);
   _palang_window_class_init_lsp (widget_class);

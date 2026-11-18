@@ -575,6 +575,83 @@ test_enter_with_setting_off (Fixture *fixture, gconstpointer data)
   assert_text (fixture, "{\n    |\n}");
 }
 
+/* ---- Select line -------------------------------------------------------- */
+
+/* Returns: the text with "[" and "]" around the selection. */
+static char *
+get_text_with_selection (Fixture *fixture)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  GtkTextIter start, sel_start, sel_end, end;
+  g_autofree char *before = NULL;
+  g_autofree char *selected = NULL;
+  g_autofree char *after = NULL;
+
+  gtk_text_buffer_get_bounds (buffer, &start, &end);
+  gtk_text_buffer_get_selection_bounds (buffer, &sel_start, &sel_end);
+  before = gtk_text_buffer_get_text (buffer, &start, &sel_start, TRUE);
+  selected = gtk_text_buffer_get_text (buffer, &sel_start, &sel_end, TRUE);
+  after = gtk_text_buffer_get_text (buffer, &sel_end, &end, TRUE);
+  return g_strconcat (before, "[", selected, "]", after, NULL);
+}
+
+static void
+assert_selection (Fixture    *fixture,
+                  const char *expected)
+{
+  g_autofree char *text = get_text_with_selection (fixture);
+
+  g_assert_cmpstr (text, ==, expected);
+}
+
+/* Pressing it again adds the next line; the last line has no newline. */
+static void
+test_select_line (Fixture *fixture, gconstpointer data)
+{
+  g_autofree char *cursor = NULL;
+
+  set_text_with_cursor (fixture, "one\ntw|o\nthree");
+
+  palang_editor_select_line (fixture->editor);
+  assert_selection (fixture, "one\n[two\n]three");
+  cursor = get_cursor (fixture);
+  g_assert_cmpstr (cursor, ==, "3:1");
+
+  palang_editor_select_line (fixture->editor);
+  assert_selection (fixture, "one\n[two\nthree]");
+
+  palang_editor_select_line (fixture->editor);
+  assert_selection (fixture, "one\n[two\nthree]");
+}
+
+/* A selection that isn't whole lines grows to the lines it touches. */
+static void
+test_select_line_from_selection (Fixture *fixture, gconstpointer data)
+{
+  GtkTextBuffer *buffer = GTK_TEXT_BUFFER (fixture->document);
+  GtkTextIter start, end;
+
+  set_text_with_cursor (fixture, "|one\ntwo\nthree\nfour\n");
+
+  /* "ne\ntw" */
+  gtk_text_buffer_get_iter_at_offset (buffer, &start, 1);
+  gtk_text_buffer_get_iter_at_offset (buffer, &end, 6);
+  gtk_text_buffer_select_range (buffer, &end, &start);
+  palang_editor_select_line (fixture->editor);
+  assert_selection (fixture, "[one\ntwo\n]three\nfour\n");
+
+  /* "e\n": ends at the start of line 2, which isn't included. */
+  gtk_text_buffer_get_iter_at_offset (buffer, &start, 2);
+  gtk_text_buffer_get_iter_at_offset (buffer, &end, 4);
+  gtk_text_buffer_select_range (buffer, &end, &start);
+  palang_editor_select_line (fixture->editor);
+  assert_selection (fixture, "[one\n]two\nthree\nfour\n");
+
+  /* Whole lines selected by hand: the next line is added. */
+  palang_editor_select_line (fixture->editor);
+  assert_selection (fixture, "[one\ntwo\n]three\nfour\n");
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -607,6 +684,8 @@ main (int   argc,
   ADD_TEST ("/editor/enter/between-brackets", test_enter_between_brackets);
   ADD_TEST ("/editor/enter/elsewhere", test_enter_elsewhere);
   ADD_TEST ("/editor/enter/with-setting-off", test_enter_with_setting_off);
+  ADD_TEST ("/editor/select-line", test_select_line);
+  ADD_TEST ("/editor/select-line-from-selection", test_select_line_from_selection);
 
 #undef ADD_TEST
 

@@ -105,6 +105,7 @@ static const struct {
   { "win.find-next",       "Find Next",            "F3" },
   { "win.find-previous",   "Find Previous",        "<Shift>F3" },
   { "win.go-to-line",      "Go to Line…",          "<Control>g" },
+  { "win.select-line",     "Select Line",          "<Control>l" },
   { "win.go-to-definition", "Go to Definition",    "F12" },
   { "win.show-completions", "Show Completions",    "<Control>space" },
   { "win.toggle-sidebar",  "Toggle Sidebar",       "F9" },

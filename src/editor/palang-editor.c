@@ -545,6 +545,46 @@ palang_editor_go_to (PalangEditor *self,
   return TRUE;
 }
 
+/* ---- Select line -------------------------------------------------------- */
+
+void
+palang_editor_select_line (PalangEditor *self)
+{
+  GtkTextBuffer *buffer;
+  GtkTextIter start, end;
+  gboolean whole_lines;
+
+  g_return_if_fail (PALANG_IS_EDITOR (self));
+
+  buffer = GTK_TEXT_BUFFER (self->document);
+  gtk_text_buffer_get_selection_bounds (buffer, &start, &end);
+
+  /* Already whole lines, from the start of a line to the start of a later
+   * one (or to the end of the text): pressing again adds the next line. */
+  whole_lines = !gtk_text_iter_equal (&start, &end) &&
+                gtk_text_iter_starts_line (&start) &&
+                (gtk_text_iter_starts_line (&end) || gtk_text_iter_is_end (&end));
+
+  if (!whole_lines)
+    {
+      /* From the start of the first line the cursor or selection touches… */
+      gtk_text_iter_set_line_offset (&start, 0);
+
+      /* …to the end of the last one, past its newline. A selection ending
+       * at the very start of a line doesn't include that line. */
+      if (gtk_text_iter_starts_line (&end) && !gtk_text_iter_equal (&start, &end))
+        gtk_text_iter_backward_char (&end);
+    }
+
+  /* To the start of the next line; on the last line, to the end of the
+   * text. */
+  gtk_text_iter_forward_line (&end);
+
+  /* The cursor goes to the end, as after selecting with Shift+Down. */
+  gtk_text_buffer_select_range (buffer, &end, &start);
+  gtk_text_view_scroll_mark_onscreen (GTK_TEXT_VIEW (self->view), gtk_text_buffer_get_insert (buffer));
+}
+
 void
 palang_editor_show_go_to (PalangEditor *self)
 {
