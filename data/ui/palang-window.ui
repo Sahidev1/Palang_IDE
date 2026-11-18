@@ -88,6 +88,9 @@
         <property name="max-sidebar-width">320</property>
         <property name="sidebar">
           <object class="AdwToolbarView">
+            <style>
+              <class name="palang-sidebar"/>  <!-- see style.css -->
+            </style>
             <child type="top">
               <object class="AdwHeaderBar">
                 <property name="show-end-title-buttons">false</property>
@@ -104,8 +107,32 @@
               </object>
             </child>
             <property name="content">
-              <object class="PalangFileTree" id="file_tree">
-                <signal name="file-activated" handler="on_file_activated"/>
+              <!-- GtkOverlay: one main child, with "overlay" children drawn
+                   on top of it. Here the main child is the faint leopard
+                   at the bottom of the sidebar (sahi's wish), and the tree
+                   is the overlay, so the tree's text is drawn over the
+                   leopard, never dimmed by it. "measure" makes the overlay
+                   count the tree's size too; normally only the main child
+                   decides how big an overlay wants to be. -->
+              <object class="GtkOverlay">
+                <property name="child">
+                  <object class="GtkImage">
+                    <property name="icon-name">palang-leopard-symbolic</property>
+                    <property name="halign">center</property>
+                    <property name="valign">end</property>
+                    <style>
+                      <class name="palang-sidebar-logo"/>  <!-- see style.css -->
+                    </style>
+                  </object>
+                </property>
+                <child type="overlay">
+                  <object class="PalangFileTree" id="file_tree">
+                    <signal name="file-activated" handler="on_file_activated"/>
+                    <layout>
+                      <property name="measure">true</property>
+                    </layout>
+                  </object>
+                </child>
               </object>
             </property>
           </object>
