@@ -61,6 +61,7 @@ xvfb_run = find_program('xvfb-run', required: false)
 # Tests that create widgets, so they need a display.
 ui_tests = {
   'window': 'test-window.c',
+  'application-run': 'test-application-run.c',
   'file-tree': 'test-file-tree.c',
   'editor': 'test-editor.c',
   'appearance': 'test-appearance.c',

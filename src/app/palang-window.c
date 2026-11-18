@@ -678,8 +678,6 @@ on_close_page (AdwTabView   *tab_view,
 
 /* ---- Closing the window with unsaved changes ---------------------------- */
 
-static void save_session (PalangWindow *self);
-
 /* The user has decided (discard or saved everything): close for real.
  *
  * We destroy the window directly instead of calling gtk_window_close()
@@ -689,7 +687,7 @@ static void save_session (PalangWindow *self);
 static void
 close_without_asking (PalangWindow *self)
 {
-  save_session (self);
+  palang_window_save_session (self);
   gtk_window_destroy (GTK_WINDOW (self));
 }
 
@@ -739,7 +737,7 @@ palang_window_close_request (GtkWindow *window)
   documents = collect_modified_documents (self);
   if (documents->len == 0)
     {
-      save_session (self);
+      palang_window_save_session (self);
       return GTK_WINDOW_CLASS (palang_window_parent_class)->close_request (window);
     }
 
@@ -809,14 +807,18 @@ palang_window_dup_session (PalangWindow *self)
   return session;
 }
 
-/* Writes the session file; called just before the window closes. */
-static void
-save_session (PalangWindow *self)
+/* Called just before the window closes, and by the application when a
+ * signal asks Palang to quit (palang-application.c). */
+void
+palang_window_save_session (PalangWindow *self)
 {
-  g_autoptr (PalangSession) session = palang_window_dup_session (self);
+  g_autoptr (PalangSession) session = NULL;
   g_autofree char *path = palang_session_default_path ();
   g_autoptr (GError) error = NULL;
 
+  g_return_if_fail (PALANG_IS_WINDOW (self));
+
+  session = palang_window_dup_session (self);
   if (!palang_session_save (session, path, &error))
     g_warning ("Could not save the session to %s: %s", path, error->message);
 }
@@ -882,6 +884,21 @@ restore_next_file (RestoreData *data)
 }
 
 void
+palang_window_restore_layout (PalangWindow        *self,
+                              const PalangSession *session)
+{
+  g_return_if_fail (PALANG_IS_WINDOW (self));
+  g_return_if_fail (session != NULL);
+
+  /* Showing the panel applies the height (on_panel_visible_changed). */
+  if (session->panel_height > 0)
+    self->panel_height = session->panel_height;
+  if (session->panel_page != NULL)
+    palang_panel_set_visible_page (self->panel, session->panel_page);
+  gtk_widget_set_visible (GTK_WIDGET (self->panel), session->show_panel);
+}
+
+void
 palang_window_restore_session (PalangWindow        *self,
                                const PalangSession *session)
 {
@@ -896,12 +913,7 @@ palang_window_restore_session (PalangWindow        *self,
                                            session->show_sidebar &&
                                            palang_window_get_folder (self) != NULL);
 
-  /* Showing the panel applies the height (on_panel_visible_changed). */
-  if (session->panel_height > 0)
-    self->panel_height = session->panel_height;
-  if (session->panel_page != NULL)
-    palang_panel_set_visible_page (self->panel, session->panel_page);
-  gtk_widget_set_visible (GTK_WIDGET (self->panel), session->show_panel);
+  palang_window_restore_layout (self, session);
 
   data = g_new0 (RestoreData, 1);
   data->window = g_object_ref (self);

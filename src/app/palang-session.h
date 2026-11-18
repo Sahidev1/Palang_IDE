@@ -4,7 +4,8 @@
  * arguments: the open folder, the open files (in tab order), which tab was
  * selected, whether the sidebar was shown, and the bottom panel (shown or
  * not, its height and its page). Never-saved "Untitled"
- * documents are not part of it.
+ * documents are not part of it. Started with files or a folder ("palang
+ * ."), Palang opens those instead and restores only the bottom panel.
  *
  * Stored in ~/.local/state/palang/session.ini:
  *

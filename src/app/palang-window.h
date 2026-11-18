@@ -64,9 +64,20 @@ PalangSearchPanel *palang_window_get_search_panel (PalangWindow *self);
  * palang-session.h). Never-saved documents are left out. */
 PalangSession *palang_window_dup_session      (PalangWindow *self);
 
+/* Writes what's open now to session.ini (palang_session_default_path ()).
+ * The window does this itself when it closes. Errors are logged. */
+void          palang_window_save_session      (PalangWindow *self);
+
 /* Opens the folder and files of @session, in order, and selects the tab
- * that was active. Missing files and folders are skipped. */
+ * that was active. Missing files and folders are skipped. Also restores
+ * the layout (palang_window_restore_layout ()). */
 void          palang_window_restore_session   (PalangWindow        *self,
+                                               const PalangSession *session);
+
+/* Restores only the bottom panel of @session: shown or hidden, its height
+ * and its page. For a new window that opens the files given on the
+ * command line instead of the session's ("palang ."). */
+void          palang_window_restore_layout    (PalangWindow        *self,
                                                const PalangSession *session);
 
 G_END_DECLS

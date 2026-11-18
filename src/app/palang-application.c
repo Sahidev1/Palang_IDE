@@ -1,12 +1,14 @@
 /* palang-application.c — app startup, app-wide actions, window creation.
  *
  * GApplication lifecycle, in order:
- *   startup  — runs once when the app starts: initialize libraries, actions.
+ *   startup  — runs once when the app starts: initialize libraries, actions,
+ *              and quit the normal way on Ctrl+C and other signals.
  *   activate — runs when the app is launched (also when the user launches it
  *              again while it is already running): show a window, restoring
  *              what was open last time.
  *   open     — like activate, but with files or a folder to open
- *              ("palang main.c", "palang ~/projects/foo").
+ *              ("palang main.c", "palang ~/projects/foo"); a new window
+ *              then restores only the bottom panel from last time.
  *   shutdown — runs once before exit.
  *
  * Every launch goes through command_line first, which picks activate or
@@ -19,6 +21,9 @@
 
 #include "config.h"
 
+#include <signal.h>
+
+#include <glib-unix.h>
 #include <gtksourceview/gtksource.h>
 
 #include "palang-appearance.h"
@@ -29,11 +34,24 @@
 #include "palang-settings.h"
 #include "palang-window.h"
 
+/* The signals that ask a program to end:
+ *   SIGINT   Ctrl+C in the terminal Palang was started from
+ *   SIGHUP   that terminal was closed
+ *   SIGTERM  `kill`, or the session logging out
+ * Without handlers, each one ends Palang on the spot: the session isn't
+ * saved (so the panel's size was forgotten) and unsaved text is lost
+ * without a question. */
+static const int quit_signals[] = { SIGINT, SIGHUP, SIGTERM };
+
 struct _PalangApplication
 {
   AdwApplication parent_instance;
 
   GListStore *commands;  /* PalangCommand, built from commands[] */
+
+  /* The main-loop sources that watch quit_signals (see on_quit_signal);
+   * 0 when not watching. */
+  guint signal_sources[G_N_ELEMENTS (quit_signals)];
 };
 
 /* Defines palang_application_get_type() and the parent class pointer
@@ -118,21 +136,77 @@ static const struct {
   { "app.quit",            "Quit",                 "<Control>q" },
 };
 
-/* Returns: (transfer none): the existing window, or a new one. */
+/* Returns: (transfer none): the existing window, or a new one. A new
+ * window gets the bottom panel as it was last time (shown or not, its
+ * height, its page), but not the last session's folder and files: the
+ * caller opens the ones the user asked for. */
 static PalangWindow *
 get_or_create_window (GApplication *app)
 {
   GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (app));
 
   if (window == NULL)
-    window = GTK_WINDOW (palang_window_new (PALANG_APPLICATION (app)));
+    {
+      g_autofree char *path = palang_session_default_path ();
+      g_autoptr (PalangSession) session = palang_session_load (path);
+
+      window = GTK_WINDOW (palang_window_new (PALANG_APPLICATION (app)));
+      if (session != NULL)
+        palang_window_restore_layout (PALANG_WINDOW (window), session);
+    }
 
   return PALANG_WINDOW (window);
+}
+
+/* ---- Quitting on a signal ----------------------------------------------- */
+
+/* Runs when one of quit_signals arrives. Palang quits the way Ctrl+Q does:
+ * each window closes normally, saving the session and asking first if a
+ * document has unsaved changes. Palang then keeps running until the user
+ * answers, because the window is still on screen even when the terminal
+ * is gone. A signal never saves or discards documents by itself: neither
+ * would be safe without the user (saving could overwrite a file with
+ * half-finished edits).
+ *
+ * The session is saved first, right away: if whoever sent the signal
+ * doesn't wait for the answer (logging out sends SIGKILL a few seconds
+ * later), the layout and the list of open files are at least kept.
+ *
+ * A question that is already open (a second Ctrl+C) is just brought to the
+ * front instead of being asked twice. */
+static gboolean
+on_quit_signal (gpointer user_data)
+{
+  GtkApplication *app = GTK_APPLICATION (user_data);
+  g_autoptr (GList) windows = g_list_copy (gtk_application_get_windows (app));
+
+  for (GList *l = windows; l != NULL; l = l->next)
+    {
+      GtkWindow *window = GTK_WINDOW (l->data);
+      AdwDialog *dialog = NULL;
+
+      if (!PALANG_IS_WINDOW (window))
+        continue;
+
+      palang_window_save_session (PALANG_WINDOW (window));
+
+      dialog = adw_application_window_get_visible_dialog (ADW_APPLICATION_WINDOW (window));
+      if (ADW_IS_ALERT_DIALOG (dialog))
+        gtk_window_present (window);
+      else
+        gtk_window_close (window);
+    }
+
+  /* G_SOURCE_CONTINUE: keep handling the signal; it may come again (the
+   * user answers "Cancel", then presses Ctrl+C once more). */
+  return G_SOURCE_CONTINUE;
 }
 
 static void
 palang_application_startup (GApplication *app)
 {
+  PalangApplication *self = PALANG_APPLICATION (app);
+
   /* "Chain up": let the parent class (AdwApplication) do its own startup
    * first. It initializes GTK and libadwaita. */
   G_APPLICATION_CLASS (palang_application_parent_class)->startup (app);
@@ -156,6 +230,26 @@ palang_application_startup (GApplication *app)
         gtk_application_set_accels_for_action (GTK_APPLICATION (app),
                                                commands[i].action, accels);
     }
+
+  /* A signal interrupts the program wherever it is, outside the main loop,
+   * where calling GTK isn't safe. g_unix_signal_add () only notes that the
+   * signal came, and calls on_quit_signal () from the main loop, like any
+   * other event. Only the running Palang gets here (startup doesn't run
+   * in a second `palang` that just hands its files over). */
+  for (guint i = 0; i < G_N_ELEMENTS (quit_signals); i++)
+    self->signal_sources[i] = g_unix_signal_add (quit_signals[i], on_quit_signal, app);
+}
+
+static void
+palang_application_shutdown (GApplication *app)
+{
+  PalangApplication *self = PALANG_APPLICATION (app);
+
+  /* The sources point to the application, which is freed soon after. */
+  for (guint i = 0; i < G_N_ELEMENTS (quit_signals); i++)
+    g_clear_handle_id (&self->signal_sources[i], g_source_remove);
+
+  G_APPLICATION_CLASS (palang_application_parent_class)->shutdown (app);
 }
 
 static void
@@ -282,6 +376,7 @@ palang_application_class_init (PalangApplicationClass *klass)
 
   /* Override the lifecycle "virtual methods" with our own functions. */
   app_class->startup = palang_application_startup;
+  app_class->shutdown = palang_application_shutdown;
   app_class->activate = palang_application_activate;
   app_class->open = palang_application_open;
   app_class->command_line = palang_application_command_line;
