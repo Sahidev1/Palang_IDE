@@ -268,7 +268,9 @@ view's `tab-width` to `PalangSettings:tab-width`, so changes apply live.
   (Ctrl+Space), `win.complain` (Ctrl+Shift+F1), `win.select-line`
   (Ctrl+L), `win.toggle-terminal-focus` (Ctrl+`, also Ctrl+§).
 - **A second shortcut** for a command: a row in `more_accels[]` in
-  `palang-application.c` (the palette shows only the first).
+  `palang-application.c`, for keys some keyboards lack. The palette shows
+  the first shortcut whose key is on the user's keyboard
+  (`dup_shortcut_label ()` in `palang-window-palette.c`).
 - **Quitting on a signal:** SIGINT, SIGHUP and SIGTERM (`g_unix_signal_add ()`
   in `startup`) save the session and close each window like Ctrl+Q, so
   unsaved changes are asked about; a signal never saves or discards a

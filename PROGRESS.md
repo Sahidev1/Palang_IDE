@@ -49,11 +49,18 @@ orchestrator doing the icon, the sidebar, review, rebasing and docs.
   (`6b77215`, not `main`): check the base next time.
 - Each worker needed its own build dir and `dbus-run-session` for the app.
 
+### Manual test results (sahi, 2026-11-19)
+All sections passed: Phase 2c, Interim, Complaint box, Complaint fixes.
+- Ctrl+` can't be pressed on sahi's Swedish keyboard; Ctrl+§ works.
+  Afterwards (`bb8bbd8`): the command palette shows the first of a
+  command's shortcuts whose key is on the keyboard
+  (`gdk_display_map_keyval ()`), so sahi sees Ctrl+§. Checked with a
+  probe on sahi's real keymap (se) and on Xvfb (us).
+- Ctrl+Space right after Escape needs a second press (Phase 2c; seen
+  before only on Xvfb): confirmed, still open.
+
 ### Open items
-- **Ctrl+§ on a real Swedish keyboard is untested** (Xvfb ignores keymap
-  changes): MANUAL_TESTS.md, "Complaint fixes" 3.
-- Manual tests still open: Phase 2c, Interim, Complaint box, Complaint
-  fixes (see "Start here" at the top of MANUAL_TESTS.md).
+- Ctrl+Space after Escape (above).
 - sahi: point the complaint box at the repo, in Palang's terminal:
   `palang set complaints-file ~/Documents/projects/agentic_projects/Palang_IDE/COMPLAINTS.md`
   (it now holds the old complaints, each marked "Handled in").

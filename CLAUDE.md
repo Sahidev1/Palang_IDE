@@ -129,17 +129,20 @@ xdotool key ctrl+q                                   # quit; check exit code 0
 | 1 Usable editor | ✅ done; manual tests passed except Follow System on MATE (default is Dark now, see PROGRESS.md) |
 | 2a Terminal, `palang` command, project search, palette + Quick Open | ✅ done; manual tests passed (dialog stacking fixed afterwards) |
 | 2b LSP client (core, sync, diagnostics, go to definition) | ✅ done; manual tests passed (JavaScript from the menu: full path, see PROGRESS.md 2c) |
-| 2c LSP hover, completion (snippets, Details pane), Problems page | ✅ done; manual tests (MANUAL_TESTS.md, Phase 2c) not yet run by sahi |
-| Interim: look and feel (logo, icons, amber, contrast), tree-hover and Save As fixes | ✅ done; manual tests (MANUAL_TESTS.md, Interim) not yet run by sahi |
-| Complaint box (`feedback/`, Ctrl+Shift+F1 → `COMPLAINTS.md`); tests made robust on a busy CPU | ✅ done 2026-10-23; manual tests (MANUAL_TESTS.md, Complaint box) not yet run |
-| Complaint fixes: brackets, Enter in `{}`, Ctrl+L, Ctrl+`, panel size/signals, menu icon, sidebar | ✅ done 2026-11-19 (orchestrator + 2 worktree agents); manual tests (MANUAL_TESTS.md, Complaint fixes) not yet run |
+| 2c LSP hover, completion (snippets, Details pane), Problems page | ✅ done; manual tests passed 2026-11-19 (Ctrl+Space after Escape needs two presses: open item) |
+| Interim: look and feel (logo, icons, amber, contrast), tree-hover and Save As fixes | ✅ done; manual tests passed 2026-11-19 |
+| Complaint box (`feedback/`, Ctrl+Shift+F1 → `COMPLAINTS.md`); tests made robust on a busy CPU | ✅ done 2026-10-23; manual tests passed 2026-11-19 |
+| Complaint fixes: brackets, Enter in `{}`, Ctrl+L, Ctrl+`, panel size/signals, menu icon, sidebar | ✅ done 2026-11-19 (orchestrator + 2 worktree agents); manual tests passed (Ctrl+` can't be pressed on sahi's Swedish keyboard, Ctrl+§ works; the palette now shows the one the keyboard has) |
 | **3 AI autocomplete (ghost text)** | **next** (decided 2026-10-22) |
 | 4 math symbols · 5 math rendering/codegen · 6 Claude Code integration | planned (`docs/plan/`) |
 
 Open items: **no license chosen** (`debian/copyright` says TBD; the logo
 is sahi's own design; needed before the GitHub repo goes public), Follow
-System doesn't switch on MATE (low priority, cause unknown), and the open decisions in PLAN.md §5 (shortcut prefix `_`
-vs `\`, math rendering engine, default AI provider, math index base).
+System doesn't switch on MATE (low priority, cause unknown), **Ctrl+Space
+right after Escape needs a second press** (confirmed on sahi's desktop
+2026-11-19; not investigated yet), and the open decisions in PLAN.md §5
+(shortcut prefix `_` vs `\`, math rendering engine, default AI provider,
+math index base).
 
 ## Code layout
 
@@ -267,13 +270,20 @@ automatically in new sessions in this folder.
 (PLAN.md §5, decision 5). The interim look-and-feel round before it is
 done (PROGRESS.md, "Interim"; guide `docs/05-how-the-look-works.md`).
 
-0. **Read sahi's complaints** in `COMPLAINTS.md` (repo root, if it
-   exists; written from Palang's complaint box, Ctrl+Shift+F1). Discuss
-   new ones with sahi before Phase 3 work; mark handled ones by adding
-   a line `→ Handled in <commit>: …` under the entry.
-1. **First, sahi's manual test results**, if they've filled them in:
-   MANUAL_TESTS.md, sections "Phase 2c" and "Interim". Investigate
-   failures before starting.
+0. **Read sahi's complaints** in `COMPLAINTS.md` (repo root; written
+   from Palang's complaint box, Ctrl+Shift+F1). On 2026-11-19 all seven
+   were handled. Discuss new ones (entries without a `→ Handled in`
+   line) with sahi before Phase 3 work; mark handled ones by adding
+   a line `→ Handled in <commit>: …` under the entry. **The setting
+   wasn't pointed at the repo yet** (2026-11-19): until sahi runs
+   `palang set complaints-file ~/Documents/projects/agentic_projects/Palang_IDE/COMPLAINTS.md`
+   in Palang's terminal, new complaints go to
+   `~/.local/share/palang/complaints.md` (read that too; its two entries
+   from 2026-11-19 01:15/01:17 are sahi's tests, to ignore).
+1. **Manual tests are all done** (2026-11-19: every section through
+   "Complaint fixes" passed; notes under each item). Nothing pending
+   before Phase 3. The one bug they confirmed (Ctrl+Space after Escape)
+   is an open item, not a blocker: ask sahi whether to fix it first.
 2. **Read** `docs/plan/phase-3-autocomplete.md` (the design), the "Phase 3"
    notes in `docs/interfaces.md` (editor/ and lsp/: Tab is already taken
    three ways; ghost text must not reach language servers), and "For later
@@ -293,6 +303,11 @@ done (PROGRESS.md, "Interim"; guide `docs/05-how-the-look-works.md`).
      all skip it (ARCHITECTURE.md invariants). Or draw it without touching
      the buffer (e.g. GtkTextView's `snapshot_layer`). Prototype early.
    - **Who gets Tab**: completion popup, snippet, ghost text, indent.
+     Since 2026-11-19 two capture-phase key controllers sit on the view's
+     parent, in this order: `PalangBracketPairs` (brackets, Backspace,
+     Enter between brackets) and the LSP completion provider (gotcha 25).
+     Ghost text's own keys (Tab, Escape, typing through it) go there too;
+     decide the order, and what typing `(` does while a suggestion shows.
    - **Splitting** into 3a (provider interface, adapters, settings `[ai.*]`,
      keyring via libsecret, tests against a `SoupServer` mock) and 3b
      (ghost text, triggers/debounce, accept/dismiss, budget meter, which

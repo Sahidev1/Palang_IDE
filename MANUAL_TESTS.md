@@ -5,20 +5,12 @@ it passes. If one fails, write what happened under it.
 
 Start Palang with `ninja -C build run` unless a test says otherwise.
 
-## Start here: what's still open (2026-11-19)
+## Status (2026-11-19)
 
-Four sections are not done yet. In this order, one or two sittings:
-
-1. **Build and install the package once** (the menu icon and the logo
-   checks need it): `tools/build-deb.sh`, then
-   `sudo apt install ./build-deb/<newest>.deb`.
-2. **Complaint box** (~3 min), at the end of this file. Its setup step
-   points complaints at the repo's `COMPLAINTS.md`.
-3. **Complaint fixes** (~10 min), right after it.
-4. **Interim — Look and feel** (~10 min).
-5. **Phase 2c** (~20 min): hover, completion, snippets, Problems page.
-
-Then write anything odd under "Results notes" and commit.
+Every section up to "Complaint fixes" has been run by sahi. All passed
+except following the system's light/dark on MATE (Phase 0 test 2,
+Phase 1 test 3: low priority, default style is Dark).
+New phases add their section at the end, before "Results notes".
 
 ---
 
@@ -444,3 +436,14 @@ Added 2026-11-19: sahi's seven complaints (`COMPLAINTS.md`, each marked
   first on PATH (that's where nvm keeps `node`), and the toast's Details
   say how: in Palang's terminal,
   `palang set javascript-server "$(command -v typescript-language-server) --stdio"`.
+- Phase 2c, Completion test 3 (Ctrl+Space right after Escape): on sahi's
+  desktop too, the list only came back on the *second* Ctrl+Space. A
+  real bug, now an open item (CLAUDE.md); not investigated yet.
+- Complaint fixes, test 3 (terminal focus): Ctrl+` can't be pressed on
+  sahi's Swedish keyboard (` is a dead key there); Ctrl+§ works. The
+  command palette now shows the shortcut the keyboard has (`bb8bbd8`).
+- Phase 2b, test 3 (JavaScript server from the menu), retest: worked
+  after running the install command the error message gives.
+- Complaint box: the setup step (`palang set complaints-file …`) wasn't
+  done, so the two test complaints went to
+  `~/.local/share/palang/complaints.md`, not the repo.
