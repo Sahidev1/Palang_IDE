@@ -138,7 +138,8 @@ static const struct {
 };
 
 /* Second shortcuts, for keyboard layouts on which a command's own key is
- * hard to press. The command palette shows only the one in commands[].
+ * hard to press. The command palette shows the first one whose key is on
+ * the user's keyboard (dup_shortcut_label () in palang-window-palette.c).
  *
  * Ctrl+`: on Swedish and other Nordic keyboards, ` is a dead key (Shift+´,
  * then another key), so Ctrl+` can't be pressed. The key where US

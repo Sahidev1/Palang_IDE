@@ -66,6 +66,47 @@ show_palette (PalangWindow  *self,
 
 /* Ctrl+Shift+P: every command of the app's command table, with its
  * shortcut as the subtitle. */
+/* Returns: (transfer full) (nullable): the shortcut of @action as the user
+ * sees it ("<Control><Alt>s" → "Ctrl+Alt+S"), or NULL if it has none.
+ *
+ * An action can have several shortcuts (more_accels[] in
+ * palang-application.c), for keys that some keyboards don't have: Ctrl+`
+ * can't be pressed on a Swedish keyboard, where ` is a dead key, so
+ * Ctrl+§ does the same there. Show the first one whose key is on this
+ * keyboard: gdk_display_map_keyval () lists the physical keys that type
+ * a key symbol (keyval), and finds none for a symbol the layout lacks. */
+static char *
+dup_shortcut_label (GtkWidget      *widget,
+                    GtkApplication *app,
+                    const char     *action)
+{
+  g_auto (GStrv) accels = gtk_application_get_accels_for_action (app, action);
+  GdkDisplay *display = gtk_widget_get_display (widget);
+  char *fallback = NULL;  /* the first shortcut, if none fits */
+
+  for (guint i = 0; accels[i] != NULL; i++)
+    {
+      guint key;
+      GdkModifierType modifiers;
+      g_autofree GdkKeymapKey *keys = NULL;
+      int n_keys = 0;
+
+      if (!gtk_accelerator_parse (accels[i], &key, &modifiers))
+        continue;
+
+      if (gdk_display_map_keyval (display, key, &keys, &n_keys) && n_keys > 0)
+        {
+          g_free (fallback);
+          return gtk_accelerator_get_label (key, modifiers);
+        }
+
+      if (fallback == NULL)
+        fallback = gtk_accelerator_get_label (key, modifiers);
+    }
+
+  return fallback;
+}
+
 static void
 command_palette_action (GtkWidget  *widget,
                         const char *action_name,
@@ -86,21 +127,12 @@ command_palette_action (GtkWidget  *widget,
       g_autoptr (PalangCommand) command = g_list_model_get_item (commands, i);
       g_autoptr (PalangPaletteItem) item = NULL;
       g_autofree char *shortcut = NULL;
-      const char *accel = palang_command_get_accel (command);
 
       /* Listing the palette in itself would be odd. */
       if (g_str_equal (palang_command_get_action_name (command), "win.command-palette"))
         continue;
 
-      /* "<Control><Alt>s" → "Ctrl+Alt+S", as the user sees it. */
-      if (accel != NULL)
-        {
-          guint key;
-          GdkModifierType modifiers;
-
-          if (gtk_accelerator_parse (accel, &key, &modifiers))
-            shortcut = gtk_accelerator_get_label (key, modifiers);
-        }
+      shortcut = dup_shortcut_label (widget, app, palang_command_get_action_name (command));
 
       item = palang_palette_item_new (palang_command_get_action_name (command),
                                       palang_command_get_title (command), shortcut, NULL);
