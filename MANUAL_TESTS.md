@@ -231,12 +231,14 @@ project, e.g. `/tmp/lsp-test/`.
       wasn't found. **Details** shows the whole message; the text can be
       selected and copied. `palang reset python-server`, then Ctrl+Shift+P
       → "Restart Language Servers": the diagnostics come back.
-- [ ] Start Palang from the **desktop menu** (or a `.desktop` launcher),
+- [x] Start Palang from the **desktop menu** (or a `.desktop` launcher),
       not a terminal, and open a `.js` file. Does the JavaScript server
       start (diagnostics appear), or does a toast say it wasn't found?
       (nvm puts Node only on the terminal's `PATH`; write down which.)
 
-    TEST NOTES: Last test got a server language error: The JavaScript language server “typescript-language-server” isn't installed. Install it with: npm install -g typescript-language-server typescript@5
+    TEST NOTES: Last test got a server language error: The JavaScript language server “typescript-language-server” isn't installed. Install it with: npm install -g typescript-language-server typescript@5. 
+
+    TEST 2 NOTES: Last test, initially didnt work but i ran script in error message. Then after it worked.
 
 ### 4. Quitting
 - [x] With C, Python and JavaScript files open, quit with Ctrl+Q: Palang
@@ -252,53 +254,56 @@ Python and JavaScript use small files in a scratch folder as in Phase 2b
 toast's Details say).
 
 ### 1. Hover
-- [ ] In `src/main.c`, rest the pointer on `palang_application_new`: a
+- [X] In `src/main.c`, rest the pointer on `palang_application_new`: a
       popup with a bold "function palang_application_new", the header it
       comes from, and the signature in a monospace font.
-- [ ] In a `.py` file with `import json`, rest it on `json`: the
+- [X] In a `.py` file with `import json`, rest it on `json`: the
       warning ('json' imported but unused) on top, a line, then the
       module's documentation, which scrolls when long.
 
 ### 2. Completion
-- [ ] Inside `main` in `src/main.c`, type `g_appl`: a list of
+- [X] Inside `main` in `src/main.c`, type `g_appl`: a list of
       `g_application_…` entries opens by itself, with their return type
       on the right and the typed letters in bold. Down/Up move, Enter
       inserts; one Ctrl+Z takes it back.
-- [ ] In a `.js` file, `const xs = [1];` then on the next line `xs.ma`:
+- [X] In a `.js` file, `const xs = [1];` then on the next line `xs.ma`:
       `map` comes first. In a `.py` file, `import os` then `os.pa`:
       `path` and `pardir` are there.
-- [ ] Type `PRI` in a C file, press Escape (the list closes), then
+- [X] Type `PRI` in a C file, press Escape (the list closes), then
       Ctrl+Space: does the list open at once, or only on the second
       Ctrl+Space? (On the virtual display only the second worked: see
       PROGRESS.md, Phase 2c, open items. On some desktops Ctrl+Space
       switches the input method instead: write down what happens.)
-- [ ] Type `PRIX` then `8`: `PRIX8` is above `PRIx8` (the exact case
+
+      NOTES: CTRL+SPACE twice was needed to see list again
+
+- [X] Type `PRIX` then `8`: `PRIX8` is above `PRIx8` (the exact case
       comes first).
-- [ ] Type a whole `return` and press Enter: a new line, not a
+- [X] Type a whole `return` and press Enter: a new line, not a
       completion. `s.b` (with a struct `s` that has a field `beta`) +
       Enter still inserts `beta`.
 
 ### 3. Snippets and details
-- [ ] In a C file with `#include <stdio.h>`, type `prin` and press Tab:
+- [X] In a C file with `#include <stdio.h>`, type `prin` and press Tab:
       `printf(…)` with the argument selected. Type `42`, press Tab: the
       cursor jumps past the `)`.
-- [ ] Type `mit` and press Tab (with no list open, e.g. after Escape):
+- [X] Type `mit` and press Tab (with no list open, e.g. after Escape):
       just a tab or spaces, no license text.
-- [ ] With a list open, click **Details**: a pane with the signature and
+- [X] With a list open, click **Details**: a pane with the signature and
       documentation (in `.js`, after `xs.ma`, it appears after a moment).
       Does it sit well next to the list (no big overlap)? It stays open
       for the next lists.
-- [ ] In a C file *without* `#include <inttypes.h>`, type `PRIX8` and
+- [X] In a C file *without* `#include <inttypes.h>`, type `PRIX8` and
       pick the entry marked •: `#include <inttypes.h>` appears at the
       top too; one Ctrl+Z removes both.
 
 ### 4. Problems page
-- [ ] Open a `.c` and a `.py` file with errors, press Ctrl+Shift+M: the
+- [X] Open a `.c` and a `.py` file with errors, press Ctrl+Shift+M: the
       Problems page lists them (icons, message, "clang · file:line"),
       sorted by file.
-- [ ] Click a row: its file opens with the cursor at the problem. Fix
+- [X] Click a row: its file opens with the cursor at the problem. Fix
       the error: its row goes away. Close the tab: its rows go away.
-- [ ] Ctrl+Shift+M also works while the terminal has the focus.
+- [X] Ctrl+Shift+M also works while the terminal has the focus.
 
 ## Interim — Look and feel
 
@@ -307,40 +312,40 @@ The round between Phase 2 and 3 (PROGRESS.md, "Interim"). Start with
 (`tools/build-deb.sh`, then install the newest file in `build-deb/`).
 
 ### 1. Logo and icons
-- [ ] After installing the `.deb`: the menu entry and the taskbar show the
+- [X] After installing the `.deb`: the menu entry and the taskbar show the
       amber leopard on a dark tile.
-- [ ] With no file open, the big leopard shows above "No Open Files".
-- [ ] The header bar, find bar (Ctrl+H), panel tabs and close buttons show
+- [X] With no file open, the big leopard shows above "No Open Files".
+- [X] The header bar, find bar (Ctrl+H), panel tabs and close buttons show
       Palang's angular icons, with amber details (sidebar strip, `+`,
       prompt `>`, replace arrow).
-- [ ] In the file tree, folders show a closed folder and an amber open
+- [X] In the file tree, folders show a closed folder and an amber open
       folder when expanded; `.c`/`.py` files a code icon, README/`.md` a
       text icon, images an image icon.
-- [ ] In a C file with an error, the gutter icon is red; a Python
+- [X] In a C file with an error, the gutter icon is red; a Python
       warning's is amber (they used to be grey).
 
 ### 2. Colors, corners, frame
-- [ ] The window has a thin double-line frame and square corners; when
+- [X] The window has a thin double-line frame and square corners; when
       maximized, no frame.
-- [ ] Buttons, text fields, tabs, menus, the palette and Preferences have
+- [X] Buttons, text fields, tabs, menus, the palette and Preferences have
       square corners.
-- [ ] Preferences (Ctrl+,): switches are amber, not blue. Switch Style to
+- [X] Preferences (Ctrl+,): switches are amber, not blue. Switch Style to
       Light and back: the amber gets deeper in light mode; everything
       stays readable.
-- [ ] Dark mode: the editor and the terminal are near-black, code colors
+- [X] Dark mode: the editor and the terminal are near-black, code colors
       are brighter (orange keywords, teal types, green strings), the
       current line number is amber.
-- [ ] With two files open, the selected tab joins the editor with an
+- [X] With two files open, the selected tab joins the editor with an
       amber line on top; the other tab is dimmed.
-- [ ] Selected rows (file tree, Problems, palette) are tinted amber with
+- [X] Selected rows (file tree, Problems, palette) are tinted amber with
       a bar on the left; the shown panel page is underlined.
 - [ ] Anything too bright, too dark or hard to read? Write it below.
 
 ### 3. The two fixes
-- [ ] Move the pointer over several files in the tree, then away: no row
+- [X] Move the pointer over several files in the tree, then away: no row
       stays highlighted. One click opens a file or folds a folder; a
       double click on a folder doesn't fold it back.
-- [ ] Open a project folder, Ctrl+N, type something, Ctrl+S: the Save As
+- [X] Open a project folder, Ctrl+N, type something, Ctrl+S: the Save As
       dialog starts in the project folder.
 
 ## Complaint box
@@ -349,15 +354,15 @@ Added 2026-10-23. Run `ninja -C build run`. First, in Palang's terminal,
 point it at the repo (once; it's saved):
 `palang set complaints-file ~/Documents/projects/agentic_projects/Palang_IDE/COMPLAINTS.md`
 
-- [ ] With a file open, press Ctrl+Shift+F1: a "Complaint Box" dialog
+- [X] With a file open, press Ctrl+Shift+F1: a "Complaint Box" dialog
       with "About <file>:<line>" (the cursor's line) and "Goes to
       ~/…/COMPLAINTS.md". Send is grey until you type something.
-- [ ] Type two lines (Enter makes a new line), press Ctrl+Enter: the
+- [X] Type two lines (Enter makes a new line), press Ctrl+Enter: the
       dialog closes, "Complaint saved" shows, and `COMPLAINTS.md` has a
       heading at the top and your entry with the time.
-- [ ] Ctrl+Shift+F1 also works while the terminal has the focus, and from
+- [X] Ctrl+Shift+F1 also works while the terminal has the focus, and from
       the command palette ("Complain about Palang…").
-- [ ] In Palang's terminal: `palang complain the font is too small`:
+- [X] In Palang's terminal: `palang complain the font is too small`:
       "Saved to …", entry marked "terminal".
 
 ## Complaint fixes
@@ -366,39 +371,41 @@ Added 2026-11-19: sahi's seven complaints (`COMPLAINTS.md`, each marked
 "Handled in …"). Run `ninja -C build run` unless it says otherwise.
 
 ### 1. Menu icon and sidebar
-- [ ] After installing the new `.deb`: the MATE menu entry shows the
+- [X] After installing the new `.deb`: the MATE menu entry shows the
       amber leopard, not a generic image (if not at once, log out and in).
-- [ ] Open a folder: a faint amber leopard at the bottom of the sidebar,
+- [X] Open a folder: a faint amber leopard at the bottom of the sidebar,
       the folder name in bold amber with an amber line under it, a slight
       warm glow at the bottom. With a long tree, the names over the
       leopard are fully readable and clickable. Same in Light style.
 
 ### 2. Brackets and Enter
-- [ ] In a `.js` or `.c` file type `f(`: you get `f()` with the cursor
+- [X] In a `.js` or `.c` file type `f(`: you get `f()` with the cursor
       inside. Type `"a", (1` then `)` `)` `;`: the result is
       `f("a", (1));` (the closers were stepped over, not doubled).
-- [ ] `x(` then Backspace: just `x`. `don't`: no extra quote. Select a
+- [X] `x(` then Backspace: just `x`. `don't`: no extra quote. Select a
       word and type `"`: the word is wrapped in quotes.
-- [ ] Type `if (x) {` and press Enter: `}` moves to its own line, the
+- [X] Type `if (x) {` and press Enter: `}` moves to its own line, the
       cursor sits on an indented line in between. One Ctrl+Z undoes it.
-- [ ] With the completion list open (Ctrl+Space) between `{}`, Enter
+- [X] With the completion list open (Ctrl+Space) between `{}`, Enter
       still takes the entry.
-- [ ] Preferences → Typing → "Close Brackets and Quotes" off: `(` stays
+- [X] Preferences → Typing → "Close Brackets and Quotes" off: `(` stays
       alone. Turn it back on.
 
 ### 3. Select line, terminal focus
-- [ ] Ctrl+L selects the cursor's whole line; again adds the next line.
+- [X] Ctrl+L selects the cursor's whole line; again adds the next line.
       In the terminal, Ctrl+L still clears the screen.
-- [ ] Ctrl+` (or **Ctrl+§**, the key left of 1 on a Swedish keyboard:
+- [X] Ctrl+` (or **Ctrl+§**, the key left of 1 on a Swedish keyboard:
       couldn't be tested on the virtual display) from the editor: the
       panel opens on the Terminal and it has the focus. Again: back to
       the editor. Write down which of the two keys works for you.
 
+      NOTES: CTRL+` does not work, but the other alternative did
+
 ### 4. Panel size from a terminal
-- [ ] In a terminal: `palang .` (the installed one). Open the panel
+- [X] In a terminal: `palang .` (the installed one). Open the panel
       (Ctrl+J), drag it much taller, quit with Ctrl+Q. `palang .` again:
       same height. Then from the menu: same height too.
-- [ ] Start `palang .` from a terminal, change the panel height, press
+- [X] Start `palang .` from a terminal, change the panel height, press
       Ctrl+C in that terminal: Palang closes (asking first if a file has
       unsaved changes; Cancel keeps it open). Start it again: the height
       is kept.
